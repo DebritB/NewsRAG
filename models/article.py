@@ -19,6 +19,7 @@ class Article:
     occurrence_count: Optional[int] = None    # Number of sources covering this story
     embedding: Optional[List[float]] = None   # 1024-dim vector from Bedrock Titan v2
     confidence: float = 0.0  # Confidence score for categorization (0.0-1.0)
+    highlight: bool = False  # Whether this is a top-5 highlight for its category
     
     def __post_init__(self):
         if self.keywords is None:
@@ -44,5 +45,6 @@ class Article:
             'source_list': self.source_list,
             'occurrence_count': self.occurrence_count,
             'embedding': self.embedding,
-            'confidence': self.confidence
+            'confidence': self.confidence,
+            'highlight': self.highlight
         }
