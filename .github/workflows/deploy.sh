@@ -5,13 +5,13 @@ set -e
 echo "Starting deployment process..."
 
 # Step 1: Create deployment package directory
-echo "Step 1/5: Creating deployment package..."
+echo "Step 1/6: Creating deployment package..."
 PACKAGE_DIR="lambda_package"
 rm -rf $PACKAGE_DIR
 mkdir $PACKAGE_DIR
 
 # Step 2: Copy Lambda code and dependencies
-echo "Step 2/5: Copying Lambda function code and configs..."
+echo "Step 2/6: Copying Lambda function code and configs..."
 cp lambda_function.py $PACKAGE_DIR/
 cp embedding_lambda.py $PACKAGE_DIR/
 cp index_manager_lambda.py $PACKAGE_DIR/
@@ -24,18 +24,18 @@ cp -r scrapers $PACKAGE_DIR/
 cp -r models $PACKAGE_DIR/
 
 # Step 3: Install dependencies
-echo "Step 3/5: Installing dependencies..."
+echo "Step 3/6: Installing dependencies..."
 pip install -r requirements-lambda.txt -t $PACKAGE_DIR --upgrade
 
 # Step 4: Package with CloudFormation
-echo "Step 4/5: Packaging with CloudFormation..."
+echo "Step 4/6: Packaging with CloudFormation..."
 aws cloudformation package \
     --template-file template.yaml \
     --s3-bucket "$S3_BUCKET_NAME" \
     --output-template-file packaged-template.yaml
 
 # Step 5: Deploy with CloudFormation
-echo "Step 5/5: Deploying to AWS..."
+echo "Step 5/6: Deploying to AWS..."
 aws cloudformation deploy \
     --template-file packaged-template.yaml \
     --stack-name newsrag-stack \
@@ -43,4 +43,18 @@ aws cloudformation deploy \
     --parameter-overrides \
         MongoDBConnectionString="$MONGODB_CONNECTION_STRING"
 
-echo "Deployment successful!"
+# Step 6: Trigger the Step Function
+echo "Step 6/6: Triggering the Step Function workflow..."
+
+# Get the State Machine ARN from the stack outputs
+STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name newsrag-stack --query "Stacks[0].Outputs[?OutputKey=='StateMachineArn'].OutputValue" --output text)
+
+if [ -z "$STATE_MACHINE_ARN" ]; then
+    echo "Could not find StateMachineArn in stack outputs. Skipping trigger."
+else
+    echo "Found State Machine ARN: $STATE_MACHINE_ARN"
+    aws stepfunctions start-execution --state-machine-arn "$STATE_MACHINE_ARN"
+    echo "Successfully triggered the Step Function."
+fi
+
+echo "Deployment and execution trigger successful!"
