@@ -9,6 +9,7 @@ from collections import defaultdict
 from dotenv import load_dotenv
 import pandas as pd
 import matplotlib.pyplot as plt
+import requests
 
 # --- Database Connection ---
 def get_database_connection():
@@ -50,7 +51,7 @@ collection = get_database_connection()
 articles = get_articles(collection)
 
 # Dropdown for selecting view
-view = st.sidebar.selectbox("Select View", ["News", "Atlas Dashboard"])
+view = st.sidebar.selectbox("Select View", ["News", "Atlas Dashboard", "Chat"])
 
 if view == "News":
     st.markdown("Displaying all news stories, grouped by category.")
@@ -141,7 +142,57 @@ elif view == "Atlas Dashboard":
     st.markdown("Live Dashboard")
 
     # URL from user's provided iframe
-    atlas_chart_url = "https://charts.mongodb.com/charts-project-0-kqaztsl/embed/dashboards?id=d3812090-4d57-42e6-866d-3ce8faa4398f&theme=light&autoRefresh=true&maxDataAge=14400&showTitleAndDesc=false&scalingWidth=scale&scalingHeight=scale"
+    atlas_chart_url = os.environ.get('MONGODB_DASHBOARD_URL')
     
     st.components.v1.iframe(atlas_chart_url, height=1000, scrolling=True)
+
+elif view == "Chat":
+    st.markdown("### News Chatbot")
+    st.write("Ask me anything about the latest news!")
+    
+    # Initialize chat history
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+    
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+    
+    # Chat input
+    if prompt := st.chat_input("Ask about news..."):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Get bot response
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    # TODO: Replace with your API Gateway URL
+                    api_url = "https://your-api-gateway-url.amazonaws.com/prod/chat"
+                    
+                    response = requests.post(
+                        api_url,
+                        json={"query": prompt},
+                        headers={"Content-Type": "application/json"},
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        bot_response = data.get('response', 'Sorry, I couldn\'t generate a response.')
+                    else:
+                        bot_response = f"Error: {response.status_code} - {response.text}"
+                        
+                except Exception as e:
+                    bot_response = f"Sorry, I encountered an error: {str(e)}"
+                
+                st.markdown(bot_response)
+        
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": bot_response})
 

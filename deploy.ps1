@@ -17,6 +17,7 @@ Copy-Item -Path "lambda_function.py" -Destination $packageDir
 Copy-Item -Path "embedding_lambda.py" -Destination $packageDir
 Copy-Item -Path "index_manager_lambda.py" -Destination $packageDir
 Copy-Item -Path "deduplicator_lambda.py" -Destination $packageDir
+Copy-Item -Path "chatbot_lambda.py" -Destination $packageDir
 Copy-Item -Path "scrape_news.py" -Destination $packageDir
 Copy-Item -Path "bedrock_embeddings.py" -Destination $packageDir
 Copy-Item -Path "keyword_classifier.py" -Destination $packageDir

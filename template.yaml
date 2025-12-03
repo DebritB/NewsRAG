@@ -75,6 +75,31 @@ Resources:
       Handler: deduplicator_lambda.lambda_handler
       Description: Finds and consolidates duplicate articles in MongoDB using vector similarity.
 
+  ChatbotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: NewsRAG-Chatbot
+      CodeUri: lambda_package/
+      Handler: chatbot_lambda.lambda_handler
+      Description: Handles user queries about news using AI and vector search.
+      Events:
+        ChatbotApi:
+          Type: Api
+          Properties:
+            Path: /chat
+            Method: post
+            RestApiId: !Ref ChatbotApi
+
+  ChatbotApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: NewsRAG-Chatbot-API
+      StageName: prod
+      Cors:
+        AllowMethods: "'POST, OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+
   # =====================================================================================
   # == Step Functions State Machine for Orchestration
   # =====================================================================================
@@ -124,3 +149,9 @@ Outputs:
   DeduplicatorFunction:
     Description: "Name of the Deduplicator Lambda function"
     Value: !Ref DeduplicatorFunction
+  ChatbotFunction:
+    Description: "Name of the Chatbot Lambda function"
+    Value: !Ref ChatbotFunction
+  ChatbotApiUrl:
+    Description: "URL of the Chatbot API Gateway"
+    Value: !Sub "https://${ChatbotApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
