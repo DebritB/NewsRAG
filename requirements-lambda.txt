@@ -1,0 +1,11 @@
+# Lambda-specific requirements (minimal dependencies)
+requests
+beautifulsoup4
+feedparser
+lxml
+html5lib
+python-dateutil
+pytz
+pymongo>=4.0.0
+dnspython
+boto3

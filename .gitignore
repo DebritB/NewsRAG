@@ -1,0 +1,50 @@
+# Environment variables
+.env
+
+# AWS configuration
+.aws/
+credentials
+*.pem
+*.key
+
+# Python virtual environment
+.venv/
+
+# Python cache and bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+
+# Distribution and build directories
+dist/
+build/
+
+# Data files
+data/*.json
+data/*.db
+*.db
+*.sqlite
+
+# macOS metadata
+.DS_Store
+
+# IDE and editor settings
+.vscode/
+.idea/
+
+# Log files
+*.log
+
+# Environment variables
+.env
+
+# VS Code settings
+.vscode/
+
+# Build artifacts
+packaged-template.yaml

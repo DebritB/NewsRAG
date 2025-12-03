@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  NewsRAG - An automated ETL pipeline orchestrated by AWS Step Functions
+  that scrapes, classifies, embeds, and deduplicates news articles.
+
+Globals:
+  Function:
+    Timeout: 900
+    MemorySize: 1024
+    Runtime: python3.12
+    Environment:
+      Variables:
+        MONGODB_URI: !Ref MongoDBConnectionString
+        MONGODB_DATABASE: news_rag
+        MONGODB_COLLECTION: articles
+
+Parameters:
+  MongoDBConnectionString:
+    Type: String
+    Description: MongoDB Atlas connection string with read/write access to the news_rag database.
+    NoEcho: true
+
+Resources:
+  # =====================================================================================
+  # == Lambda Functions for the State Machine
+  # =====================================================================================
+
+  # 1. Scraper Function: Extracts and classifies news articles.
+  NewsScraperFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: NewsRAG-Scraper
+      CodeUri: lambda_package/
+      Handler: lambda_function.lambda_handler
+      Description: Scrapes and classifies news articles, then saves them to MongoDB with a 'pending' status.
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['secretsmanager:GetSecretValue']
+              Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:newsrag/api-keys-*'
+            - Effect: Allow
+              Action: ['bedrock:InvokeModel']
+              Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0'
+
+  # 2. Embedding Function: Generates vector embeddings for pending articles.
+  EmbeddingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: NewsRAG-EmbeddingGenerator
+      CodeUri: lambda_package/
+      Handler: embedding_lambda.lambda_handler
+      Description: Generates vector embeddings for articles marked as 'pending'.
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['bedrock:InvokeModel']
+              Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+
+  # 3. Index Manager Function: Checks for and creates the MongoDB vector index.
+  IndexManagerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: NewsRAG-IndexManager
+      CodeUri: lambda_package/
+      Handler: index_manager_lambda.lambda_handler
+      Description: Checks if the MongoDB vector search index exists and creates it if needed.
+  
+  # 4. Deduplicator Function: Removes duplicate articles using vector search.
+  DeduplicatorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: NewsRAG-Deduplicator
+      CodeUri: lambda_package/
+      Handler: deduplicator_lambda.lambda_handler
+      Description: Finds and consolidates duplicate articles in MongoDB using vector similarity.
+
+  # =====================================================================================
+  # == Step Functions State Machine for Orchestration
+  # =====================================================================================
+
+  NewsETLStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: NewsRAG-ETL-Workflow
+      Type: STANDARD
+      DefinitionUri: statemachine/workflow.asl.json
+      DefinitionSubstitutions:
+        NewsScraperFunction: !Ref NewsScraperFunction
+        EmbeddingFunction: !Ref EmbeddingFunction
+        IndexManagerFunction: !Ref IndexManagerFunction
+        DeduplicatorFunction: !Ref DeduplicatorFunction
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref NewsScraperFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref EmbeddingFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref IndexManagerFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref DeduplicatorFunction
+      Events:
+        ScheduledTrigger:
+          Type: Schedule
+          Properties:
+            Name: Every-12-Hours-Trigger
+            Description: Triggers the NewsRAG ETL workflow every 12 hours.
+            Schedule: rate(12 hours)
+            Enabled: true
+
+Outputs:
+  StateMachineArn:
+    Description: "ARN of the Step Functions State Machine"
+    Value: !Ref NewsETLStateMachine
+  NewsScraperFunction:
+    Description: "Name of the Scraper Lambda function"
+    Value: !Ref NewsScraperFunction
+  EmbeddingFunction:
+    Description: "Name of the Embedding Lambda function"
+    Value: !Ref EmbeddingFunction
+  IndexManagerFunction:
+    Description: "Name of the Index Manager Lambda function"
+    Value: !Ref IndexManagerFunction
+  DeduplicatorFunction:
+    Description: "Name of the Deduplicator Lambda function"
+    Value: !Ref DeduplicatorFunction

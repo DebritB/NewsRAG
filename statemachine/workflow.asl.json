@@ -1,0 +1,87 @@
+{
+  "Comment": "A Step Functions workflow to orchestrate the NewsRAG ETL pipeline with decoupled embedding generation.",
+  "StartAt": "ScrapeAndClassify",
+  "States": {
+    "ScrapeAndClassify": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${NewsScraperFunction}",
+        "Payload": {}
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "GenerateEmbeddings",
+          "Comment": "Catch all errors and proceed to the next step to process any pending work."
+        }
+      ],
+      "Next": "GenerateEmbeddings"
+    },
+    "GenerateEmbeddings": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${EmbeddingFunction}",
+        "Payload": {}
+      },
+      "Next": "CheckIfIndexExists"
+    },
+    "CheckIfIndexExists": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${IndexManagerFunction}",
+        "Payload": {
+          "mode": "check"
+        }
+      },
+      "ResultPath": "$.indexCheckResult",
+      "Next": "DoesIndexExistChoice"
+    },
+    "DoesIndexExistChoice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.indexCheckResult.Payload.indexExists",
+          "BooleanEquals": false,
+          "Next": "CreateIndex"
+        }
+      ],
+      "Default": "DeduplicateArticles"
+    },
+    "CreateIndex": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${IndexManagerFunction}",
+        "Payload": {
+          "mode": "create"
+        }
+      },
+      "Next": "DeduplicateArticles"
+    },
+    "DeduplicateArticles": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${DeduplicatorFunction}",
+        "Payload": {}
+      },
+      "End": true
+    }
+  }
+}

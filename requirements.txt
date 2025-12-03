@@ -1,0 +1,16 @@
+# News extraction
+feedparser==6.0.10
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml
+html5lib
+
+# AWS & Database
+boto3
+pymongo>=4.0.0
+dnspython
+
+# Utilities
+python-dotenv
+python-dateutil==2.8.2
+pytz==2023.3
