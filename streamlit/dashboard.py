@@ -25,99 +25,123 @@ def get_database_connection():
 
 # --- Data Fetching ---
 @st.cache_data(ttl=600) # Cache data for 10 minutes
-def get_daily_highlights(_collection):
-    """Fetches and processes the news highlights."""
-    st.info("Fetching latest news highlights from the database...")
+def get_articles(_collection):
+    """Fetches and processes all news articles."""
     
-    # Query for all articles, sorted to show most frequent and newest first
-    query = {'highlight': True}
+    # --- Fetch raw articles for the "News" view ---
+    query = {}
     sort_order = [("occurrence_count", -1), ("published_at", -1)]
-    
     articles = list(_collection.find(query).sort(sort_order))
     
-    # Group articles by category
+    # Group articles by category for tabbed display
     categorized_articles = defaultdict(list)
     for article in articles:
         category = article.get("category", "Uncategorized")
         categorized_articles[category].append(article)
         
-    # Calculate stats for charts
-    category_counts = {category: len(articles) for category, articles in categorized_articles.items()}
-    
-    if not category_counts:
-        return categorized_articles, pd.DataFrame()
-
-    stats_df = pd.DataFrame.from_dict(category_counts, orient='index', columns=['count'])
-    stats_df['percentage'] = (stats_df['count'] / stats_df['count'].sum() * 100).round(1)
-    stats_df = stats_df.sort_values(by='count', ascending=False)
-        
-    return categorized_articles, stats_df
+    return categorized_articles
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="NewsRAG Daily Highlights", layout="wide")
-st.title("📰 NewsRAG Highlights")
-st.markdown("Displaying the top news stories, grouped by category.")
+st.set_page_config(page_title="NewsRAG", layout="wide")
+st.title("News247 - Daily News Highlights")
 
 # --- Main Application ---
 collection = get_database_connection()
-highlights, stats_df = get_daily_highlights(collection)
+articles = get_articles(collection)
 
-if not highlights:
-    st.warning("No recent articles found in the database. The ETL pipeline may be running or there might be no new news.")
-else:
-    # --- Visualizations ---
-    st.subheader("📊 News Distribution by Category")
+# Dropdown for selecting view
+view = st.sidebar.selectbox("Select View", ["News", "Atlas Dashboard"])
+
+if view == "News":
+    st.markdown("Displaying all news stories, grouped by category.")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write("Number of Articles")
-        st.bar_chart(stats_df['count'])
+    if not articles:
+        st.warning("No recent articles found in the database. The ETL pipeline may be running or there might be no new news.")
+    else:
+        # --- Category Tabs ---
+        st.subheader("Browse by Category")
+        # Create a tab for each category
+        categories = sorted(articles.keys())
+        tabs = st.tabs(categories)
         
-    with col2:
-        st.write("Percentage of Articles")
-        fig, ax = plt.subplots(figsize=(5, 5))
-        ax.pie(stats_df['percentage'], labels=stats_df.index, autopct='%1.1f%%', startangle=90)
-        ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
-        st.pyplot(fig)
+        for i, category in enumerate(categories):
+            with tabs[i]:
+                st.subheader(f"News in {category.capitalize()}")
+                
+                articles_in_category = articles[category]
+                
+                if not articles_in_category:
+                    st.info("No articles found for this category.")
+                    continue
 
-    # --- Category Tabs ---
-    st.subheader("📰 Browse by Category")
-    # Create a tab for each category
-    categories = sorted(highlights.keys())
-    tabs = st.tabs(categories)
+                # Separate highlights and other articles
+                highlights = [art for art in articles_in_category if art.get('highlight', False)]
+                other_articles = [art for art in articles_in_category if not art.get('highlight', False)]
+                
+                # Display highlights first
+                if highlights:
+                    st.markdown("### BREAKING NEWS")
+                    st.markdown("---")
+                    for article in highlights:
+                        title = article.get("title", "No Title Provided")
+                        url = article.get("url", "#")
+                        authors = article.get("authors", []) or ([article.get("author")] if article.get("author") else [])
+                        author_str = ', '.join(authors) if authors else 'Unknown'
+                        
+                        st.markdown(f"### **{title}**")
+                        
+                        # --- Details Section ---
+                        cols = st.columns([2, 1, 1])
+                        
+                        # Column 1: Sources
+                        sources = article.get("source_list", [article.get("source", "N/A")])
+                        cols[0].markdown(f"**[Source(s):]({url})** {', '.join(sources)}")
+                        
+                        # Column 2: Frequency
+                        frequency = article.get("occurrence_count", 1)
+                        cols[1].markdown(f"**Frequency:** `{frequency}`")
+                        
+                        # Column 3: Authors
+                        cols[2].markdown(f"**Author(s):** `{author_str}`")
+                        
+                        st.markdown("---")
+                
+                # Display other articles
+                if other_articles:
+                    st.markdown("### Other News")
+                    st.markdown("---")
+                    for article in other_articles:
+                        title = article.get("title", "No Title Provided")
+                        url = article.get("url", "#")
+                        authors = article.get("authors", []) or ([article.get("author")] if article.get("author") else [])
+                        author_str = ', '.join(authors) if authors else 'Unknown'
+                        
+                        st.markdown(f"#### {title}")
+                        
+                        # --- Details Section ---
+                        cols = st.columns([2, 1, 1])
+                        
+                        # Column 1: Sources
+                        sources = article.get("source_list", [article.get("source", "N/A")])
+                        cols[0].markdown(f"**[Source(s):]({url})** {', '.join(sources)}")
+                        
+                        # Column 2: Frequency
+                        frequency = article.get("occurrence_count", 1)
+                        cols[1].markdown(f"**Frequency:** `{frequency}`")
+                        
+                        # Column 3: Authors
+                        cols[2].markdown(f"**Author(s):** `{author_str}`")
+                        
+                        st.markdown("---")
+
+
+
+elif view == "Atlas Dashboard":
+
+    st.markdown("Live Dashboard")
+
+    # URL from user's provided iframe
+    atlas_chart_url = "https://charts.mongodb.com/charts-project-0-kqaztsl/embed/dashboards?id=d3812090-4d57-42e6-866d-3ce8faa4398f&theme=light&autoRefresh=true&maxDataAge=14400&showTitleAndDesc=false&scalingWidth=scale&scalingHeight=scale"
     
-    for i, category in enumerate(categories):
-        with tabs[i]:
-            st.subheader(f"Top Stories in {category.capitalize()}")
-            
-            articles_in_category = highlights[category]
-            
-            if not articles_in_category:
-                st.info("No articles found for this category in the last 48 hours.")
-                continue
-
-            # Display each article
-            for article in articles_in_category:
-                title = article.get("title", "No Title Provided")
-                url = article.get("url", "#")
-                
-                st.markdown(f"#### [{title}]({url})")
-                
-                # --- Details Section ---
-                cols = st.columns([2, 1, 1])
-                
-                # Column 1: Sources
-                sources = article.get("source_list", [article.get("source", "N/A")])
-                cols[0].markdown(f"**Source(s):** `{', '.join(sources)}`")
-                
-                # Column 2: Frequency
-                frequency = article.get("occurrence_count", 1)
-                cols[1].markdown(f"**Frequency:** `{frequency}`")
-                
-                # Column 3: Authors
-                authors = article.get("authors", [])
-                cols[2].markdown(f"**Author(s):** `{', '.join(authors) if authors else 'NA'}`")
-                
-                st.markdown("---")
+    st.components.v1.iframe(atlas_chart_url, height=1000, scrolling=True)
 

@@ -891,3 +891,84 @@ class CanberraTimesScraper:
         if hasattr(entry, 'media_content'):
             return entry.media_content[0].get('url', '')
         return ''
+
+
+class AustralianSportsScraper:
+    """Scraper for Australian Sports RSS feeds"""
+    
+    RSS_FEEDS = [
+        ('AFL - Latest', 'https://www.afl.com.au/rss'),
+        ('NRL - Latest', 'https://www.nrl.com.au/rss'),
+        ('Cricket Australia - Latest', 'https://www.cricket.com.au/rss'),
+        ('Fox Sports Australia - Latest', 'https://www.foxsports.com.au/rss'),
+    ]
+    
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+    
+    def scrape(self, max_articles: int = 100) -> List[Article]:
+        """Scrape articles from Australian Sports sources"""
+        articles = []
+        
+        for feed_name, feed_url in self.RSS_FEEDS:
+            try:
+                logger.info(f"Scraping {feed_name}...")
+                feed_articles = self._scrape_feed(feed_url, feed_name)
+                articles.extend(feed_articles)
+                logger.info(f"Found {len(feed_articles)} articles from {feed_name}")
+            except Exception as e:
+                logger.error(f"Error scraping {feed_name}: {e}")
+        
+        return articles[:max_articles]
+    
+    def _scrape_feed(self, feed_url: str, feed_name: str) -> List[Article]:
+        """Scrape a single RSS feed"""
+        articles = []
+        
+        try:
+            feed = feedparser.parse(feed_url)
+            
+            for entry in feed.entries:
+                try:
+                    article = Article(
+                        title=entry.title,
+                        url=entry.link,
+                        source=feed_name.split(' - ')[0],  # e.g., 'AFL'
+                        published_date=self._parse_date(entry.get('published', '')),
+                        content=self._extract_content(entry),
+                        summary=entry.get('summary', ''),
+                        author=entry.get('author', feed_name.split(' - ')[0]),
+                        category='Sports',  # Pre-categorize as Sports
+                        keywords=[],
+                        image_url=self._extract_image(entry)
+                    )
+                    articles.append(article)
+                except Exception as e:
+                    logger.error(f"Error parsing {feed_name} article: {e}")
+                    continue
+        except Exception as e:
+            logger.error(f"Error fetching {feed_name} feed {feed_url}: {e}")
+        
+        return articles
+    
+    def _parse_date(self, date_str: str) -> datetime:
+        try:
+            from dateutil import parser
+            return parser.parse(date_str)
+        except:
+            return datetime.now()
+    
+    def _extract_content(self, entry) -> str:
+        if hasattr(entry, 'content'):
+            return entry.content[0].value
+        elif hasattr(entry, 'summary'):
+            return entry.summary
+        return ''
+    
+    def _extract_image(self, entry) -> str:
+        if hasattr(entry, 'media_content'):
+            return entry.media_content[0].get('url', '')
+        return ''

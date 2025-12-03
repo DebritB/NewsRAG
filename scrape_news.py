@@ -22,6 +22,7 @@ from scrapers import (
     BrisbaneTimesScraper,
     WATodayScraper,
     CanberraTimesScraper,
+    AustralianSportsScraper,
     GuardianAPIScraper,
     GNewsAPIScraper,
     NewsDataIOScraper
@@ -52,7 +53,8 @@ class NewsAggregator:
             SevenNewsScraper(),
             BrisbaneTimesScraper(),
             WATodayScraper(),
-            CanberraTimesScraper()
+            CanberraTimesScraper(),
+            AustralianSportsScraper()
         ]
         
         self.api_scrapers = [

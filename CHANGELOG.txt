@@ -1,0 +1,130 @@
+Project: NewsRAG
+Date: 2025-12-04
+
+Summary of recent changes and improvements to the project.
+
+---
+
+### Feature: Automatic Article Highlighting
+
+-   **Goal**: Automatically identify and feature the top 5 most important articles for each news category on the dashboard.
+-   **Data Model Update**: Added a new boolean field named `highlight` to the `Article` data model in `models/article.py`.
+-   **Scoring Logic**: Implemented a scoring algorithm in `deduplicator_lambda.py`. The score is a weighted average:
+    -   **60% Weight**: Given to articles containing keywords like 'breaking', 'alert', 'exclusive', 'major', etc., in the title or summary.
+    -   **40% Weight**: Given based on the article's `occurrence_count` (how many sources reported it), normalized to a scale of 1 to 10.
+-   **Implementation**: The `deduplicator_lambda` now calculates this score for all recent articles, identifies the top 5 per category, and sets their `highlight` flag to `true` in MongoDB.
+
+---
+
+### Feature: Enhanced CI/CD Workflow
+
+-   **Goal**: Ensure that after deploying new code, the data processing pipeline runs immediately to reflect the changes.
+-   **Implementation**: Modified the `./.github/workflows/deploy.sh` script.
+-   **Functionality**: After the CloudFormation deployment successfully finishes, the script now automatically triggers a new execution of the `NewsRAG-ETL-Workflow` AWS Step Function. This provides immediate feedback on new code without waiting for the next scheduled run.
+
+---
+
+### Dashboard (UI) Improvements
+
+-   **Simplified Interface**: Removed all date and time selection components from the Streamlit dashboard for a cleaner, more focused user experience. The dashboard now always shows the latest available highlights.
+-   **Data Visualization**: Added two new charts to the top of the dashboard:
+    1.  A bar chart showing the total number of highlighted articles in each category.
+    2.  A pie chart showing the percentage distribution of highlighted articles across categories.
+-   **Content Filtering**: The dashboard logic in `streamlit/dashboard.py` was updated to only query and display articles where the `highlight` field is set to `true`.
+-   **Author Display**: Updated the article details to display the author's name. If the author is not available, it now correctly displays "NA".
+
+---
+
+### Bug Fixes & Diagnostics
+
+-   **Lambda Timeout Issue**: Investigated Step Function failures by analyzing CloudWatch logs. Diagnosed that the `NewsScraperFunction` was running too slowly and timing out.
+-   **Log Analysis Script**: Located and utilized the `tests/local/check_logs.py` script to efficiently fetch and display logs for specific Lambda functions, speeding up the debugging process.
+
+---
+
+### CloudWatch Error Report (Dec 1–4, 2025)
+
+- **NewsRAG-Scraper Lambda**
+    - Numerous articles ignored due to low confidence scores (0.00 or very low). This is expected filtering, but may indicate overly strict thresholds.
+
+- **NewsRAG-IndexManager Lambda**
+    - `TypeError: 'SearchIndexModel' object is not subscriptable` at `index_manager_lambda.py`, line 55. Cause: Attempting to access a class instance as a dictionary. Should use attribute access (`search_index_model.name`).
+    - `AttributeError: 'SearchIndexModel' object has no attribute 'name'`. Indicates the object does not have a `name` attribute.
+    - `ValueError: Could not load index definition from vector_search_index_config.json`. Cause: Missing `'mappings'` key in the configuration file.
+    - Error parsing index configuration file: `'mappings' key not found in index configuration.`
+
+- **Action Items**
+    - Review and fix attribute access in `index_manager_lambda.py`.
+    - Ensure `vector_search_index_config.json` contains the required `'mappings'` key.
+    - Consider adjusting confidence thresholds in the scraper if too many articles are ignored.
+
+---
+
+### Next Step: Performance Optimization
+
+-   **Problem**: The current scraping process is sequential (one scraper runs after another), causing the Lambda function to run for too long and risk timing out.
+-   **Solution**: The next planned task is to modify `scrape_news.py` to use multithreading, allowing all news scrapers to run in parallel. This will dramatically reduce the total execution time.
+
+---
+
+## Project Documentation: The NewsRAG ETL Pipeline
+
+### 1. Project Overview
+
+The NewsRAG project is a fully automated, serverless ETL (Extract, Transform, Load) pipeline built on AWS. Its primary purpose is to aggregate news articles from various sources, intelligently classify them, enrich them with vector embeddings for semantic understanding, and store them in a clean, deduplicated MongoDB database. The entire process is orchestrated by an AWS Step Function, ensuring resilience and scalability.
+
+**Core Technologies:**
+
+- Orchestration: AWS Step Functions
+- Compute: AWS Lambda (Python 3.12)
+- AI/LLMs: Amazon Bedrock (Anthropic Claude 3 Haiku for classification, Amazon Titan for embeddings)
+- Database: MongoDB Atlas (including Vector Search)
+- Deployment: AWS CloudFormation (via AWS SAM in template.yaml) and a PowerShell deployment script.
+
+### 2. The Journey: Problems Faced & Solutions Implemented
+
+**Problem 1: Lambda Timeouts and API Throttling**
+
+*The Issue*: The initial design placed all logic into a single, large Lambda function, which was frequently failing or timing out due to Bedrock API rate limiting.
+
+*The Logic You Selected (The Solution)*: To decouple the process, breaking the monolithic function into smaller, specialized functions.
+
+*How We Solved It*: We adopted AWS Step Functions to orchestrate four distinct Lambdas (ScrapeAndClassify, GenerateEmbeddings, IndexManager, Deduplicator), isolating the time-intensive steps.
+
+**Problem 2: Inefficient and Costly Classification**
+
+*The Issue*: Relying solely on an LLM for classifying every article would be slow and expensive.
+
+*The Logic You Selected (The Solution)*: To use a hybrid classification strategy for speed and accuracy.
+
+*How We Solved It*: The pipeline first uses a fast, local TF-IDF Keyword Classifier. Only low-confidence articles are sent to Claude for advanced classification.
+
+**Problem 3: Manual Workflow Steps and Fragility**
+
+*The Issue*: Manual steps for index creation and deduplication made the system fragile. A database deletion would break the workflow.
+
+*The Logic You Selected (The Solution)*: To build a fully automated, self-healing system.
+
+*How We Solved It*: We automated index creation and deduplication into their own Lambda functions within the Step Function. We also added error handling so the workflow continues even if the initial scraping step fails.
+
+**Problem 4: Project Clutter and Organization**
+
+*The Issue*: The project root was cluttered with application, deployment, and testing scripts.
+
+*The Logic You Selected (The Solution)*: A clean, logical separation between application and testing code.
+
+*How We Solved It*: We created a structured 'tests' folder and moved all testing scripts into it, deleting all unused and duplicate files.
+
+### 3. Final Architecture & Component Breakdown
+
+The final system is an event-driven, orchestrated workflow:
+
+- **Trigger**: An EventBridge rule triggers the workflow every 12 hours.
+- **Orchestrator** (`statemachine/workflow.asl.json`): The Step Function that manages the entire sequence.
+- **Workflow Steps**: `lambda_function.py`, `embedding_lambda.py`, `index_manager_lambda.py`, and `deduplicator_lambda.py`.
+- **Deployment** (`template.yaml` & `deploy.ps1`): The entire infrastructure is defined as code and deployed in a single command.
+- **Testing** (`tests/`): A well-organized suite of local scripts to test individual components.
+
+### 4. Cost
+
+The final architecture is extremely cost-effective, with an estimated total monthly cost of ~$1.65, primarily driven by Amazon Bedrock usage. The serverless nature of Lambda and Step Functions keeps compute costs near zero for this workload.
