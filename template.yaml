@@ -26,14 +26,14 @@ Resources:
   # == Lambda Functions for the State Machine
   # =====================================================================================
 
-  # 1. Scraper Function: Extracts and classifies news articles.
+  # 1. Scraper Function: Extracts, transforms, and loads news articles.
   NewsScraperFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: NewsRAG-Scraper
       CodeUri: lambda_package/
       Handler: lambda_function.lambda_handler
-      Description: Scrapes and classifies news articles, then saves them to MongoDB with a 'pending' status.
+      Description: Scrapes, classifies, and embeds news articles, then saves them to MongoDB.
       Policies:
         - Statement:
             - Effect: Allow
@@ -41,23 +41,11 @@ Resources:
               Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:newsrag/api-keys-*'
             - Effect: Allow
               Action: ['bedrock:InvokeModel']
-              Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0'
+              Resource:
+                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0'
 
-  # 2. Embedding Function: Generates vector embeddings for pending articles.
-  EmbeddingFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: NewsRAG-EmbeddingGenerator
-      CodeUri: lambda_package/
-      Handler: embedding_lambda.lambda_handler
-      Description: Generates vector embeddings for articles marked as 'pending'.
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action: ['bedrock:InvokeModel']
-              Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
-
-  # 3. Index Manager Function: Checks for and creates the MongoDB vector index.
+  # 2. Index Manager Function: Checks for and creates the MongoDB vector index.
   IndexManagerFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -66,7 +54,7 @@ Resources:
       Handler: index_manager_lambda.lambda_handler
       Description: Checks if the MongoDB vector search index exists and creates it if needed.
   
-  # 4. Deduplicator Function: Removes duplicate articles using vector search.
+  # 3. Deduplicator Function: Removes duplicate articles using vector search.
   DeduplicatorFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -75,30 +63,28 @@ Resources:
       Handler: deduplicator_lambda.lambda_handler
       Description: Finds and consolidates duplicate articles in MongoDB using vector similarity.
 
+  # 4. Chatbot Function: Handles AI-powered Q&A using vector search and Claude 3 Sonnet.
   ChatbotFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: NewsRAG-Chatbot
       CodeUri: lambda_package/
       Handler: chatbot_lambda.lambda_handler
-      Description: Handles user queries about news using AI and vector search.
+      Description: Processes user queries, performs vector search on MongoDB, and generates AI responses using Bedrock.
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['bedrock:InvokeModel']
+              Resource:
+                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0'
       Events:
-        ChatbotApi:
+        ChatApi:
           Type: Api
           Properties:
+            RestApiId: !Ref ChatbotApi
             Path: /chat
             Method: post
-            RestApiId: !Ref ChatbotApi
-
-  ChatbotApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      Name: NewsRAG-Chatbot-API
-      StageName: prod
-      Cors:
-        AllowMethods: "'POST, OPTIONS'"
-        AllowHeaders: "'Content-Type'"
-        AllowOrigin: "'*'"
 
   # =====================================================================================
   # == Step Functions State Machine for Orchestration
@@ -110,16 +96,9 @@ Resources:
       Name: NewsRAG-ETL-Workflow
       Type: STANDARD
       DefinitionUri: statemachine/workflow.asl.json
-      DefinitionSubstitutions:
-        NewsScraperFunction: !Ref NewsScraperFunction
-        EmbeddingFunction: !Ref EmbeddingFunction
-        IndexManagerFunction: !Ref IndexManagerFunction
-        DeduplicatorFunction: !Ref DeduplicatorFunction
       Policies:
         - LambdaInvokePolicy:
             FunctionName: !Ref NewsScraperFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref EmbeddingFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref IndexManagerFunction
         - LambdaInvokePolicy:
@@ -133,6 +112,27 @@ Resources:
             Schedule: rate(12 hours)
             Enabled: true
 
+  # =====================================================================================
+  # == API Gateway for Chatbot
+  # =====================================================================================
+
+  ChatbotApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: NewsRAG-Chatbot-API
+      StageName: prod
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+  # =====================================================================================
+  # == IAM Roles (implicit roles created by SAM are sufficient for basic Lambda execution)
+  # =====================================================================================
+  # SAM automatically creates execution roles for each Lambda function with permissions
+  # for CloudWatch Logs. The policies attached above grant the specific permissions needed.
+  # An explicit role for the State Machine is also created by SAM.
+
 Outputs:
   StateMachineArn:
     Description: "ARN of the Step Functions State Machine"
@@ -140,9 +140,6 @@ Outputs:
   NewsScraperFunction:
     Description: "Name of the Scraper Lambda function"
     Value: !Ref NewsScraperFunction
-  EmbeddingFunction:
-    Description: "Name of the Embedding Lambda function"
-    Value: !Ref EmbeddingFunction
   IndexManagerFunction:
     Description: "Name of the Index Manager Lambda function"
     Value: !Ref IndexManagerFunction
@@ -152,6 +149,6 @@ Outputs:
   ChatbotFunction:
     Description: "Name of the Chatbot Lambda function"
     Value: !Ref ChatbotFunction
-  ChatbotApiUrl:
-    Description: "URL of the Chatbot API Gateway"
+  ChatbotApi:
+    Description: "API Gateway endpoint for the Chatbot"
     Value: !Sub "https://${ChatbotApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
