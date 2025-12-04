@@ -117,7 +117,7 @@ Resources:
           Properties:
             Name: Every-12-Hours-Trigger
             Description: Triggers the NewsRAG ETL workflow every 12 hours.
-            Schedule: rate(12 hours)
+            Schedule: rate(2 hours)
             Enabled: true
 
   NewsETLStateMachineRole:

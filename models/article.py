@@ -35,7 +35,7 @@ class Article:
             'title': self.title,
             'url': self.url,
             'source': self.source,
-            'published_date': self.published_date.isoformat(),
+            'published_date': self.published_date,
             'content': self.content,
             'summary': self.summary,
             'author': self.author,

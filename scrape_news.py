@@ -143,20 +143,19 @@ class NewsAggregator:
         return unique_articles
     
     def scrape_all(self, max_per_source: int = 200) -> List[Article]:
-        """Scrape articles from all sources - only yesterday and today"""
+        """Scrape articles from all sources - only within the last 10 hours"""
         logger.info("=" * 60)
         logger.info("Starting news aggregation from all sources")
-        logger.info("Filtering: Yesterday and Today only")
+        logger.info("Filtering: Last 10 hours only")
         logger.info("=" * 60)
         
         from datetime import timedelta
         
-        # Calculate date filters: yesterday and today (timezone-naive)
+        # Calculate time filter: 10 hours ago from now (timezone-naive)
         now = datetime.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        yesterday_start = today_start - timedelta(days=1)
+        time_threshold = now - timedelta(hours=10)
         
-        logger.info(f"Date filter: {yesterday_start.date()} to {now.date()}")
+        logger.info(f"Time filter: Articles published after {time_threshold}")
         logger.info("=" * 60)
         
         # Scrape RSS feeds
@@ -167,7 +166,7 @@ class NewsAggregator:
                 logger.info(f"\nScraping {source_name}...")
                 articles = scraper.scrape(max_articles=max_per_source)
                 
-                # Filter articles from yesterday and today only
+                # Filter articles from the last 10 hours only
                 filtered_articles = []
                 for article in articles:
                     article_date = article.published_date
@@ -175,7 +174,7 @@ class NewsAggregator:
                     if article_date.tzinfo is not None:
                         article_date = article_date.replace(tzinfo=None)
                     
-                    if article_date >= yesterday_start:
+                    if article_date >= time_threshold:
                         filtered_articles.append(article)
                 
                 self.all_articles.extend(filtered_articles)
@@ -191,7 +190,7 @@ class NewsAggregator:
                 logger.info(f"\nScraping {source_name}...")
                 articles = scraper.scrape(max_articles=max_per_source)
                 
-                # Filter articles from yesterday and today only
+                # Filter articles from the last 10 hours only
                 filtered_articles = []
                 for article in articles:
                     article_date = article.published_date
@@ -199,7 +198,7 @@ class NewsAggregator:
                     if article_date.tzinfo is not None:
                         article_date = article_date.replace(tzinfo=None)
                     
-                    if article_date >= yesterday_start:
+                    if article_date >= time_threshold:
                         filtered_articles.append(article)
                 
                 self.all_articles.extend(filtered_articles)

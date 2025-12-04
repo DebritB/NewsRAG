@@ -68,11 +68,9 @@ def lambda_handler(event, context):
         for key, value in secrets.items():
             os.environ[key] = value
         
-        # Cleanup: Remove articles older than yesterday
+        # Cleanup: Remove articles older than 24 hours
         print("Cleaning up old articles...")
-        today = datetime.utcnow().date()
-        yesterday = today - timedelta(days=1)
-        cutoff = datetime.combine(yesterday, datetime.min.time())
+        cutoff = datetime.utcnow() - timedelta(hours=24)
         client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
         db = client[MONGODB_DATABASE]
         collection = db[MONGODB_COLLECTION]
