@@ -14,7 +14,7 @@ mkdir $PACKAGE_DIR
 # Step 2: Copy Lambda code and dependencies
 echo "Step 2/6: Copying Lambda function code and configs..."
 cp lambda_function.py $PACKAGE_DIR/
-cp embedding_lambda.py $PACKAGE_DIR/
+cp lambda_package/embedding_lambda.py $PACKAGE_DIR/
 cp index_manager_lambda.py $PACKAGE_DIR/
 cp deduplicator_lambda.py $PACKAGE_DIR/
 cp chatbot_lambda.py $PACKAGE_DIR/
