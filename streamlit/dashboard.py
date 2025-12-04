@@ -16,7 +16,7 @@ import json
 def get_database_connection():
     """Connects to MongoDB and returns the articles collection."""
     load_dotenv()
-    mongodb_uri = st.secrets.get('MONGODB_URI') or os.environ.get('MONGODB_URI')
+    mongodb_uri = st.secrets.get('MONGODB_URI')
     if not mongodb_uri:
         st.error("MONGODB_URI not found in secrets or environment variables. Cannot connect to the database.")
         st.stop()
@@ -123,7 +123,7 @@ if view == "News":
 elif view == "Atlas Dashboard":
     st.markdown("Live Dashboard")
 
-    atlas_chart_url = st.secrets.get('MONGODB_DASHBOARD_URL') or os.environ.get('MONGODB_DASHBOARD_URL')
+    atlas_chart_url = st.secrets.get('MONGODB_DASHBOARD_URL') 
     
     if not atlas_chart_url:
         st.error("Dashboard URL not found.")
@@ -139,7 +139,7 @@ elif view == "Chat":
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display existing chat
+    # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -147,17 +147,17 @@ elif view == "Chat":
     # Chat input
     if prompt := st.chat_input("Ask about news..."):
 
+        # Store user message
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # --- SEND REQUEST TO AWS LAMBDA ---
+        # Call AWS Lambda
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
                     api_url = st.secrets.get('AWS_API_URL')
 
-                    # FIX 1: Use raw body string
                     response = requests.post(
                         api_url,
                         data=json.dumps({"query": prompt}),
@@ -165,26 +165,22 @@ elif view == "Chat":
                         timeout=30
                     )
 
-                    st.write("DEBUG response.text:", response.text)
-                    st.write("DEBUG response.json():", response.json())
-
-                    # FIX 2: Universal parser
                     if response.status_code == 200:
-                        try:
-                            response_data = response.json()
+                        response_data = response.json()
 
-                            if "response" in response_data:
-                                bot_response = response_data["response"]
+                        # Extract ONLY the "response" field
+                        if "response" in response_data:
+                            bot_response = response_data["response"]
 
-                            elif "body" in response_data:
-                                inner_json = json.loads(response_data["body"])
-                                bot_response = inner_json.get("response", "Sorry, I couldn't parse the response.")
+                        elif "body" in response_data:
+                            inner_json = json.loads(response_data["body"])
+                            bot_response = inner_json.get(
+                                "response",
+                                "Sorry, I couldn't parse the response."
+                            )
 
-                            else:
-                                bot_response = "Sorry, I couldn't parse the response."
-
-                        except Exception as e:
-                            bot_response = f"Error decoding response: {e}"
+                        else:
+                            bot_response = "Sorry, I couldn't understand the server response."
 
                     else:
                         bot_response = f"Error: {response.status_code} - {response.text}"
@@ -192,7 +188,8 @@ elif view == "Chat":
                 except Exception as e:
                     bot_response = f"An error occurred: {str(e)}"
 
+                # Display clean final answer only
                 st.markdown(bot_response)
 
-        # Save assistant reply
+        # Save assistant message
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
