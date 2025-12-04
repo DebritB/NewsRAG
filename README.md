@@ -1,3 +1,31 @@
+# App Guide: How to Use NewsRAG
+
+When you open NewsRAG, you'll see a clean dashboard with all the latest news highlights. Here's how to explore and use the app:
+
+## Navigation
+- **Top Left Arrow:** Click the arrow in the top left corner to open the sidebar. This is your main navigation for switching views.
+
+- **Sidebar Drop-down:** You'll find a drop-down menu with three options:
+	- **News:** Shows all news stories, grouped by category. Browse headlines, sources, and authors. Breaking news is highlighted at the top.
+	- **Atlas Dashboard:** Displays live charts and stats about the news database. You can see trends, counts, and other visual summaries.
+	- **Chat:** Opens the chatbot. Type any question about the latest news and get instant answers from the AI assistant.
+
+## News View
+- Browse news by category using the tabs at the top.
+- Each tab shows stories for that category. Breaking news appears first, followed by other articles.
+- For each story, you can see the headline, source, frequency (how many sources reported it), and author.
+
+## Atlas Dashboard View
+- See live charts and stats about the news collection.
+- Use this view to explore trends, counts, and other visual summaries of the news data.
+
+## Chat View
+- Ask questions about the news using the chatbot.
+- Type your question in the box at the bottom and press Enter.
+- The AI assistant will reply with answers based on the latest news stories.
+- Previous chat messages are shown above, so you can follow the conversation.
+
+---
 # NewsRAG – AI-Powered News Aggregation & Chatbot
 
 NewsRAG is a serverless, production-grade news aggregation system for Australian news, featuring AI-powered categorization, deduplication, vector search, and a Retrieval-Augmented Generation (RAG) chatbot. It leverages AWS Lambda, Step Functions, MongoDB Atlas, and Amazon Bedrock for scalable, low-cost operation.
