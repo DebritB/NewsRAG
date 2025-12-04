@@ -74,8 +74,19 @@ def lambda_handler(event, context):
         client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
         db = client[MONGODB_DATABASE]
         collection = db[MONGODB_COLLECTION]
-        deleted = collection.delete_many({"published_at": {"$lt": cutoff}}).deleted_count
-        print(f"Deleted {deleted} old articles (before {cutoff})")
+        
+        # Use $expr and $toDate to handle string dates
+        query = {
+            "$expr": {
+                "$lt": [
+                    {"$toDate": "$published_at"},
+                    cutoff
+                ]
+            }
+        }
+        
+        deleted_count = collection.delete_many(query).deleted_count
+        print(f"Deleted {deleted_count} old articles (before {cutoff})")
         
         # Scrape articles
         print("Starting news scraping...")
