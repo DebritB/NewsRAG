@@ -7,7 +7,7 @@ Description: >
 Globals:
   Function:
     Timeout: 900
-    MemorySize: 1024check in 
+    MemorySize: 1024 
     Runtime: python3.12
     Environment:
       Variables:
