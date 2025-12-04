@@ -78,13 +78,6 @@ Resources:
               Resource:
                 - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
                 - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0'
-      Events:
-        ChatApi:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ChatbotApi
-            Path: /chat
-            Method: post
 
   # =====================================================================================
   # == Step Functions State Machine for Orchestration
@@ -113,18 +106,11 @@ Resources:
             Enabled: true
 
   # =====================================================================================
-  # == API Gateway for Chatbot
+  # == IAM Roles (implicit roles created by SAM are sufficient for basic Lambda execution)
   # =====================================================================================
-
-  ChatbotApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      Name: NewsRAG-Chatbot-API
-      StageName: prod
-      Cors:
-        AllowMethods: "'POST,OPTIONS'"
-        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-        AllowOrigin: "'*'"
+  # SAM automatically creates execution roles for each Lambda function with permissions
+  # for CloudWatch Logs. The policies attached above grant the specific permissions needed.
+  # An explicit role for the State Machine is also created by SAM.
 
   # =====================================================================================
   # == IAM Roles (implicit roles created by SAM are sufficient for basic Lambda execution)
@@ -149,6 +135,3 @@ Outputs:
   ChatbotFunction:
     Description: "Name of the Chatbot Lambda function"
     Value: !Ref ChatbotFunction
-  ChatbotApi:
-    Description: "API Gateway endpoint for the Chatbot"
-    Value: !Sub "https://${ChatbotApi}.execute-api.${AWS::Region}.amazonaws.com/prod"

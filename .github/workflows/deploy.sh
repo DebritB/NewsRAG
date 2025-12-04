@@ -11,11 +11,13 @@ rm -rf $PACKAGE_DIR
 mkdir $PACKAGE_DIR
 
 # Step 2: Copy Lambda code and dependencies
+# Step 2: Copy Lambda code and dependencies
 echo "Step 2/6: Copying Lambda function code and configs..."
 cp lambda_function.py $PACKAGE_DIR/
 cp embedding_lambda.py $PACKAGE_DIR/
 cp index_manager_lambda.py $PACKAGE_DIR/
 cp deduplicator_lambda.py $PACKAGE_DIR/
+# cp chatbot_lambda.py $PACKAGE_DIR/  # Temporarily removed for testing
 cp scrape_news.py $PACKAGE_DIR/
 cp bedrock_embeddings.py $PACKAGE_DIR/
 cp keyword_classifier.py $PACKAGE_DIR/
