@@ -1,18 +1,3 @@
----
-
-## Local Testing
-
-You can run manual tests and utility scripts from the `tests` folder to verify scraping, vector search, index creation, and log access:
-
-- `tests/extract/test_apis.py`: Test API scrapers and verify article fetching.
-- `tests/extract/test_vector_search.py`: Test vector search for similar articles in MongoDB.
-- `tests/local/create_vector_index.py`: Create or update the MongoDB Atlas vector index.
-- `tests/local/check_logs.py`: Fetch recent logs from AWS Lambda functions via CloudWatch.
-
-These scripts help you check that core features are working locally before deploying. For more robust testing, consider adding automated unit and integration tests.
-
----
-
 # NewsRAG – AI-Powered News Aggregator and Chatbot
 
 NewsRAG aggregates news from multiple sources, organizes and categorizes them, and enables semantic search or conversational queries using a retrieval-augmented generation (RAG) approach. It serves as a unified news reader + AI summarizer + chatbot for a curated feed of news.
@@ -165,6 +150,12 @@ For a detailed progress report and history of changes, see `CHANGELOG.txt` in th
 
 ---
 
+## Architecture 
+
+![Your paragraph text (1)](https://github.com/user-attachments/assets/314604da-1eba-4703-a8c4-550be0c57910)
+
+---
+
 ## Cloud Deployment (AWS)
 - **Automatic:** Every push to `main` triggers GitHub Actions to:
 	1. Package Lambda code
@@ -243,18 +234,6 @@ This project is licensed under the [MIT License](LICENSE).
 
 ---
 
-## Project Structure
-- `scrape_news.py` – Main news scraping entry point
-- `lambda_function.py`, `embedding_lambda.py`, `index_manager_lambda.py`, `deduplicator_lambda.py`, `chatbot_lambda.py` – Lambda handlers
-- `models/`, `scrapers/` – Data models and scraping logic
-- `streamlit/dashboard.py` – Streamlit UI
-- `statemachine/workflow.asl.json` – Step Function definition
-- `vector_search_index_config.json` – MongoDB vector index config
-- `requirements.txt` – Local dev dependencies
-- `requirements-lambda.txt` – Lambda deployment dependencies
-
----
-
 ## Setup & Local Development
 1. **Clone the repo:**
 	 ```bash
@@ -313,6 +292,19 @@ This project is licensed under the [MIT License](LICENSE).
 	MONGODB_DASHBOARD_URL = "your_atlas_dashboard_url"
 	```
 - GitHub Actions secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `MONGODB_CONNECTION_STRING`, `S3_BUCKET_NAME`
+
+---
+
+## Local Testing
+
+You can run manual tests and utility scripts from the `tests` folder to verify scraping, vector search, index creation, and log access:
+
+- `tests/extract/test_apis.py`: Test API scrapers and verify article fetching.
+- `tests/extract/test_vector_search.py`: Test vector search for similar articles in MongoDB.
+- `tests/local/create_vector_index.py`: Create or update the MongoDB Atlas vector index.
+- `tests/local/check_logs.py`: Fetch recent logs from AWS Lambda functions via CloudWatch.
+
+These scripts help you check that core features are working locally before deploying. For more robust testing, consider adding automated unit and integration tests.
 
 ---
 
