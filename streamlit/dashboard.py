@@ -10,12 +10,13 @@ from dotenv import load_dotenv
 import pandas as pd
 import matplotlib.pyplot as plt
 import requests
+import json
 
 # --- Database Connection ---
 def get_database_connection():
     """Connects to MongoDB and returns the articles collection."""
     load_dotenv()
-    mongodb_uri = st.secrets.get('MONGODB_URI') or os.environ.get('MONGODB_URI')
+    mongodb_uri = st.secrets.get('MONGODB_URI')
     if not mongodb_uri:
         st.error("MONGODB_URI not found in secrets or environment variables. Cannot connect to the database.")
         st.stop()
@@ -142,7 +143,7 @@ elif view == "Atlas Dashboard":
     st.markdown("Live Dashboard")
 
     # URL from secrets or environment
-    atlas_chart_url = st.secrets.get('MONGODB_DASHBOARD_URL') or os.environ.get('MONGODB_DASHBOARD_URL')
+    atlas_chart_url = st.secrets.get('MONGODB_DASHBOARD_URL')
     
     if not atlas_chart_url:
         st.error("Dashboard URL not found in secrets or environment variables.")
@@ -185,8 +186,14 @@ elif view == "Chat":
                     )
                     
                     if response.status_code == 200:
-                        data = response.json()
-                        bot_response = data.get('response', 'Sorry, I couldn\'t generate a response.')
+                        # The response from API Gateway has a 'body' which is a JSON string.
+                        # We need to parse it twice.
+                        response_data = response.json()
+                        body_data = json.loads(response_data.get('body', '{}'))
+                        if 'response' in body_data:
+                            bot_response = body_data['response']
+                        else:
+                            bot_response = f"Debug: No 'response' key in body_data. Full body_data: {body_data}"
                     else:
                         bot_response = f"Error: {response.status_code} - {response.text}"
                         
