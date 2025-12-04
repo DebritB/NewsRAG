@@ -15,6 +15,8 @@ Date: 2025-12-04
 - **Deployment Troubleshooting**:
     - Identified and resolved IAM permission errors for the CI/CD user (`newsrag-user`), which initially lacked `apigateway:POST` permissions.
     - Diagnosed "Missing Authentication Token" errors, which were caused by an improperly configured API Gateway resource (missing `/chat` POST method).
+    - Fixed a `Runtime.ImportModuleError` for the `chatbot_lambda` by ensuring the `deploy.sh` script correctly includes `chatbot_lambda.py` in the deployment package.
+    - Resolved a recurring Bedrock `AccessDeniedException` by completing the AWS Marketplace subscription for the Claude 3 Sonnet model, which was the final step required to grant account-wide access.
 - **API Gateway Manual Configuration**: Removed the `ChatbotApi` resource from `template.yaml` to allow for manual creation and configuration in the AWS console, simplifying the CI/CD permissions required.
 
 ### Streamlit Dashboard

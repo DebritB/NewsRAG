@@ -15,7 +15,7 @@ import requests
 def get_database_connection():
     """Connects to MongoDB and returns the articles collection."""
     load_dotenv()
-    mongodb_uri = st.secrets.get('MONGODB_URI')
+    mongodb_uri = st.secrets.get('MONGODB_URI') or os.environ.get('MONGODB_URI')
     if not mongodb_uri:
         st.error("MONGODB_URI not found in secrets or environment variables. Cannot connect to the database.")
         st.stop()
@@ -142,7 +142,7 @@ elif view == "Atlas Dashboard":
     st.markdown("Live Dashboard")
 
     # URL from secrets or environment
-    atlas_chart_url = st.secrets.get('MONGODB_DASHBOARD_URL')
+    atlas_chart_url = st.secrets.get('MONGODB_DASHBOARD_URL') or os.environ.get('MONGODB_DASHBOARD_URL')
     
     if not atlas_chart_url:
         st.error("Dashboard URL not found in secrets or environment variables.")
@@ -191,7 +191,7 @@ elif view == "Chat":
                         bot_response = f"Error: {response.status_code} - {response.text}"
                         
                 except Exception as e:
-                    bot_response = f"Sorry, I encountered an error: {str(e)}"
+                    bot_response = f"An error occurred: {str(e)}"
                 
                 st.markdown(bot_response)
         
