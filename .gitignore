@@ -48,3 +48,6 @@ data/*.db
 
 # Build artifacts
 packaged-template.yaml
+
+# Streamlit secrets
+.streamlit/secrets.toml

@@ -1,3 +1,56 @@
+# Executive Summary
+
+- **Total monthly cost:** ~$1.00 (M0 free tier, 12-hour scrape schedule)
+- **Annual cost:** ~$12 (before scaling)
+- **Scalability:** Handles 12K–144K articles/year for under $12
+- **Major cost drivers:** Bedrock batch inference, Lambda execution
+- **Hidden costs:** None for current scale; MongoDB upgrade only needed if exceeding 50K articles
+
+---
+
+# Key Insights & Additional Considerations
+
+## 1. Bedrock Batch vs On-Demand
+- Batch inference is not only 50% cheaper, but also eliminates API rate limit headaches.
+- Batch jobs are robust, scalable, and future-proof for higher article volumes.
+
+## 2. MongoDB Atlas
+- M0 free tier is sufficient for the first year (up to ~50K articles).
+- Upgrade to M2 ($9/month) only needed if scaling beyond this, which is predictable and manageable.
+
+## 3. Lambda & S3
+- Lambda costs are low due to efficient batch processing and short execution times.
+- S3 costs are negligible due to aggressive lifecycle policies and small file sizes.
+
+## 4. Cost per Article
+- End-to-end cost per processed article: **~0.008 cents**
+- This is orders of magnitude lower than typical commercial NLP/AI pipelines.
+
+## 5. Scalability
+- Architecture supports scaling to 1000+ articles/run with no code changes.
+- MongoDB and S3 can be upgraded as needed, with predictable cost increments.
+
+## 6. Operational Resilience
+- No hidden costs for monitoring, logging, or error handling (CloudWatch, Atlas logs are free at this scale).
+- All major components (Bedrock, Lambda, S3, MongoDB) are serverless and managed, minimizing maintenance overhead.
+
+## 7. Cost Optimization Opportunities
+- Further reduce costs by lowering scrape frequency or pre-filtering articles.
+- Delay MongoDB upgrade as long as possible by deduplicating and archiving old articles.
+
+## 8. Future-Proofing
+- If you add more advanced models (e.g., Claude 3 Sonnet), costs will increase, but batch discounts still apply.
+- For real-time chat or search, on-demand inference may be needed, but batch remains optimal for ETL.
+
+---
+
+## Conclusion
+
+**NewsRAG’s architecture is highly cost-efficient, scalable, and robust for news aggregation and retrieval-augmented generation.** With serverless components and batch AI processing, you can operate at scale for less than $1/month, and future upgrades are predictable and manageable.
+
+**Recommendation:** Continue with current architecture; monitor MongoDB storage and Bedrock usage monthly. Consider cost-saving tweaks only if scaling beyond current projections.
+
+---
 # NewsRAG Cost Analysis - Bedrock Batch Inference Architecture
 
 ## Monthly Cost Breakdown (12-hour scraping schedule = 60 runs/month)

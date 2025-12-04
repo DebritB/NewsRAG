@@ -16,7 +16,7 @@ import json
 def get_database_connection():
     """Connects to MongoDB and returns the articles collection."""
     load_dotenv()
-    mongodb_uri = st.secrets.get('MONGODB_URI')
+    mongodb_uri = st.secrets.get('MONGODB_URI') or os.environ.get('MONGODB_URI')
     if not mongodb_uri:
         st.error("MONGODB_URI not found in secrets or environment variables. Cannot connect to the database.")
         st.stop()
@@ -26,22 +26,23 @@ def get_database_connection():
     return db["articles"]
 
 # --- Data Fetching ---
-@st.cache_data(ttl=600) # Cache data for 10 minutes
+@st.cache_data(ttl=600)  # Cache data for 10 minutes
 def get_articles(_collection):
     """Fetches and processes all news articles."""
     
-    # --- Fetch raw articles for the "News" view ---
+    # Fetch raw articles for the "News" view
     query = {}
     sort_order = [("occurrence_count", -1), ("published_at", -1)]
     articles = list(_collection.find(query).sort(sort_order))
     
-    # Group articles by category for tabbed display
+    # Group articles by category
     categorized_articles = defaultdict(list)
     for article in articles:
         category = article.get("category", "Uncategorized")
         categorized_articles[category].append(article)
         
     return categorized_articles
+
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="NewsRAG", layout="wide")
@@ -54,154 +55,144 @@ articles = get_articles(collection)
 # Dropdown for selecting view
 view = st.sidebar.selectbox("Select View", ["News", "Atlas Dashboard", "Chat"])
 
+# --- NEWS VIEW ---
 if view == "News":
     st.markdown("Displaying all news stories, grouped by category.")
     
     if not articles:
-        st.warning("No recent articles found in the database. The ETL pipeline may be running or there might be no new news.")
+        st.warning("No recent articles found in the database.")
     else:
-        # --- Category Tabs ---
         st.subheader("Browse by Category")
-        # Create a tab for each category
         categories = sorted(articles.keys())
         tabs = st.tabs(categories)
         
         for i, category in enumerate(categories):
             with tabs[i]:
                 st.subheader(f"News in {category.capitalize()}")
-                
                 articles_in_category = articles[category]
-                
+
                 if not articles_in_category:
                     st.info("No articles found for this category.")
                     continue
 
-                # Separate highlights and other articles
-                highlights = [art for art in articles_in_category if art.get('highlight', False)]
-                other_articles = [art for art in articles_in_category if not art.get('highlight', False)]
+                highlights = [a for a in articles_in_category if a.get('highlight', False)]
+                other_articles = [a for a in articles_in_category if not a.get('highlight', False)]
                 
-                # Display highlights first
+                # --- HIGHLIGHTS ---
                 if highlights:
                     st.markdown("### BREAKING NEWS")
                     st.markdown("---")
                     for article in highlights:
-                        title = article.get("title", "No Title Provided")
+                        title = article.get("title", "No Title")
                         url = article.get("url", "#")
                         authors = article.get("authors", []) or ([article.get("author")] if article.get("author") else [])
-                        author_str = ', '.join(authors) if authors else 'Unknown'
+                        author_str = ", ".join(authors) if authors else "Unknown"
                         
                         st.markdown(f"### **{title}**")
-                        
-                        # --- Details Section ---
                         cols = st.columns([2, 1, 1])
-                        
-                        # Column 1: Sources
+
                         sources = article.get("source_list", [article.get("source", "N/A")])
                         cols[0].markdown(f"**[Source(s):]({url})** {', '.join(sources)}")
-                        
-                        # Column 2: Frequency
-                        frequency = article.get("occurrence_count", 1)
-                        cols[1].markdown(f"**Frequency:** `{frequency}`")
-                        
-                        # Column 3: Authors
+                        cols[1].markdown(f"**Frequency:** `{article.get('occurrence_count', 1)}`")
                         cols[2].markdown(f"**Author(s):** `{author_str}`")
-                        
+
                         st.markdown("---")
-                
-                # Display other articles
+
+                # --- OTHER NEWS ---
                 if other_articles:
                     st.markdown("### Other News")
                     st.markdown("---")
                     for article in other_articles:
-                        title = article.get("title", "No Title Provided")
+                        title = article.get("title", "No Title")
                         url = article.get("url", "#")
                         authors = article.get("authors", []) or ([article.get("author")] if article.get("author") else [])
-                        author_str = ', '.join(authors) if authors else 'Unknown'
-                        
+                        author_str = ", ".join(authors) if authors else "Unknown"
+
                         st.markdown(f"#### {title}")
-                        
-                        # --- Details Section ---
                         cols = st.columns([2, 1, 1])
-                        
-                        # Column 1: Sources
+
                         sources = article.get("source_list", [article.get("source", "N/A")])
                         cols[0].markdown(f"**[Source(s):]({url})** {', '.join(sources)}")
-                        
-                        # Column 2: Frequency
-                        frequency = article.get("occurrence_count", 1)
-                        cols[1].markdown(f"**Frequency:** `{frequency}`")
-                        
-                        # Column 3: Authors
+                        cols[1].markdown(f"**Frequency:** `{article.get('occurrence_count', 1)}`")
                         cols[2].markdown(f"**Author(s):** `{author_str}`")
-                        
+
                         st.markdown("---")
 
 
-
+# --- ATLAS DASHBOARD VIEW ---
 elif view == "Atlas Dashboard":
-
     st.markdown("Live Dashboard")
 
-    # URL from secrets or environment
-    atlas_chart_url = st.secrets.get('MONGODB_DASHBOARD_URL')
+    atlas_chart_url = st.secrets.get('MONGODB_DASHBOARD_URL') or os.environ.get('MONGODB_DASHBOARD_URL')
     
     if not atlas_chart_url:
-        st.error("Dashboard URL not found in secrets or environment variables.")
+        st.error("Dashboard URL not found.")
     else:
         st.components.v1.iframe(atlas_chart_url, height=1000, scrolling=True)
 
+
+# --- CHATBOT VIEW ---
 elif view == "Chat":
     st.markdown("### News Chatbot")
     st.write("Ask me anything about the latest news!")
-    
-    # Initialize chat history
-    if 'messages' not in st.session_state:
+
+    if "messages" not in st.session_state:
         st.session_state.messages = []
-    
-    # Display chat messages
+
+    # Display existing chat
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-    
+
     # Chat input
     if prompt := st.chat_input("Ask about news..."):
-        # Add user message to chat history
+
         st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # Display user message
         with st.chat_message("user"):
             st.markdown(prompt)
-        
-        # Get bot response
+
+        # --- SEND REQUEST TO AWS LAMBDA ---
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
                     api_url = st.secrets.get('AWS_API_URL')
-                    
+
+                    # FIX 1: Use raw body string
                     response = requests.post(
                         api_url,
-                        json={"query": prompt},
+                        data=json.dumps({"query": prompt}),
                         headers={"Content-Type": "application/json"},
                         timeout=30
                     )
-                    
+
+                    st.write("DEBUG response.text:", response.text)
+                    st.write("DEBUG response.json():", response.json())
+
+                    # FIX 2: Universal parser
                     if response.status_code == 200:
-                        # The response from API Gateway has a 'body' which is a JSON string.
-                        # We need to parse it twice.
-                        response_data = response.json()
-                        body_data = json.loads(response_data.get('body', '{}'))
-                        if 'response' in body_data:
-                            bot_response = body_data['response']
-                        else:
-                            bot_response = f"Debug: No 'response' key in body_data. Full body_data: {body_data}"
+                        try:
+                            response_data = response.json()
+
+                            if "response" in response_data:
+                                bot_response = response_data["response"]
+
+                            elif "body" in response_data:
+                                inner_json = json.loads(response_data["body"])
+                                bot_response = inner_json.get("response", "Sorry, I couldn't parse the response.")
+
+                            else:
+                                bot_response = "Sorry, I couldn't parse the response."
+
+                        except Exception as e:
+                            bot_response = f"Error decoding response: {e}"
+
                     else:
                         bot_response = f"Error: {response.status_code} - {response.text}"
-                        
+
                 except Exception as e:
                     bot_response = f"An error occurred: {str(e)}"
-                
-                st.markdown(bot_response)
-        
-        # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": bot_response})
 
+                st.markdown(bot_response)
+
+        # Save assistant reply
+        st.session_state.messages.append({"role": "assistant", "content": bot_response})
