@@ -15,9 +15,9 @@ import requests
 def get_database_connection():
     """Connects to MongoDB and returns the articles collection."""
     load_dotenv()
-    mongodb_uri = os.environ.get('MONGODB_URI')
+    mongodb_uri = st.secrets.get('MONGODB_URI')
     if not mongodb_uri:
-        st.error("MONGODB_URI environment variable not set. Cannot connect to the database.")
+        st.error("MONGODB_URI not found in secrets or environment variables. Cannot connect to the database.")
         st.stop()
     
     client = MongoClient(mongodb_uri)
@@ -141,10 +141,13 @@ elif view == "Atlas Dashboard":
 
     st.markdown("Live Dashboard")
 
-    # URL from user's provided iframe
-    atlas_chart_url = os.environ.get('MONGODB_DASHBOARD_URL')
+    # URL from secrets or environment
+    atlas_chart_url = st.secrets.get('MONGODB_DASHBOARD_URL')
     
-    st.components.v1.iframe(atlas_chart_url, height=1000, scrolling=True)
+    if not atlas_chart_url:
+        st.error("Dashboard URL not found in secrets or environment variables.")
+    else:
+        st.components.v1.iframe(atlas_chart_url, height=1000, scrolling=True)
 
 elif view == "Chat":
     st.markdown("### News Chatbot")
@@ -172,7 +175,7 @@ elif view == "Chat":
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
-                    api_url = st.secrets["AWS_API_URL"]
+                    api_url = st.secrets.get('AWS_API_URL')
                     
                     response = requests.post(
                         api_url,
