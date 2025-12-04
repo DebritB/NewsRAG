@@ -79,7 +79,7 @@ def lambda_handler(event, context):
         query = {
             "$expr": {
                 "$lt": [
-                    {"$toDate": "$published_at"},
+                    {"$toDate": "$published_date"},
                     cutoff
                 ]
             }
