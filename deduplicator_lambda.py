@@ -49,10 +49,21 @@ def update_highlights(collection):
     """Identifies and flags top 5 articles per category as highlights."""
     print("--- Updating Highlights ---")
     
-    # 1. Fetch all articles from the last 48 hours
+    # 1. Fetch all articles from the last 48 hours using an aggregation pipeline
     cutoff_date = datetime.utcnow() - timedelta(days=2)
-    query = {"published_date": {"$gte": cutoff_date.isoformat()}}
-    articles = list(collection.find(query))
+    pipeline = [
+        {
+            "$match": {
+                "$expr": {
+                    "$gte": [
+                        {"$toDate": "$published_date"},
+                        cutoff_date
+                    ]
+                }
+            }
+        }
+    ]
+    articles = list(collection.aggregate(pipeline))
     
     if not articles:
         print("No recent articles found to highlight.")
@@ -78,9 +89,13 @@ def update_highlights(collection):
             highlighted_ids.add(article['_id'])
             
     # 4. Update database
+    # Create a filter query based on the IDs of the fetched articles
+    article_ids = [article['_id'] for article in articles]
+    filter_query = {'_id': {'$in': article_ids}}
+
     # Reset all recent articles to highlight: false
     reset_result = collection.update_many(
-        query,
+        filter_query,
         {'$set': {'highlight': False}}
     )
     
