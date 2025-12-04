@@ -106,15 +106,62 @@ For a detailed progress report and history of changes, see `CHANGELOG.txt` in th
 
 ---
 
-## Project Structure
-- `scrape_news.py` – Main news scraping entry point
-- `lambda_function.py`, `embedding_lambda.py`, `index_manager_lambda.py`, `deduplicator_lambda.py`, `chatbot_lambda.py` – Lambda handlers
-- `models/`, `scrapers/` – Data models and scraping logic
-- `streamlit/dashboard.py` – Streamlit UI
-- `statemachine/workflow.asl.json` – Step Function definition
-- `vector_search_index_config.json` – MongoDB vector index config
-- `requirements.txt` – Local dev dependencies
-- `requirements-lambda.txt` – Lambda deployment dependencies
+
+## Detailed Architecture & Data Flow
+
+### 1. User Interaction (Streamlit Dashboard)
+- Users interact with the Streamlit dashboard (`streamlit/dashboard.py`) to:
+  - Browse categorized news
+  - View analytics and trends
+  - Chat with the AI assistant about the latest news
+
+### 2. Chatbot Query Flow
+- When a user asks a question in the dashboard:
+  1. Streamlit sends the query to the Chatbot Lambda (via API Gateway or direct Lambda invoke)
+  2. Chatbot Lambda:
+	  - Retrieves relevant news articles and embeddings from MongoDB Atlas
+	  - Uses AWS Bedrock (Claude) to generate a response based on retrieved news
+	  - Returns the answer to Streamlit for display
+
+### 3. ETL Pipeline (Automated News Processing)
+- Every 12 hours, a scheduled Event triggers the Step Functions State Machine (`statemachine/workflow.asl.json`):
+  1. **Scraping Lambda** (`scrape_news.py`):
+	  - Collects news articles from APIs and RSS feeds
+	  - Stores raw articles in MongoDB Atlas
+  2. **Classification Lambda**:
+	  - Uses Bedrock Claude to categorize articles (e.g., Politics, Tech)
+	  - Updates article records in MongoDB with category labels
+  3. **Embedding Lambda**:
+	  - Uses Bedrock Titan to generate vector embeddings for each article
+	  - Stores embeddings in MongoDB for semantic search
+  4. **Index Manager Lambda**:
+	  - Manages MongoDB Atlas vector index (creation, updates)
+  5. **Deduplicator Lambda**:
+	  - Detects and merges duplicate news stories using vector similarity
+	  - Updates MongoDB to group/merge duplicates
+
+### 4. Data Storage (MongoDB Atlas)
+- All articles, categories, and embeddings are stored in MongoDB Atlas
+- Vector search is enabled for semantic similarity and deduplication
+
+### 5. Automation & Deployment
+- **GitHub Actions**: On every push to `main`, CI/CD pipeline packages and deploys Lambda code and Step Function definitions via AWS SAM/CloudFormation
+- **CloudFormation**: Manages all AWS resources as infrastructure-as-code
+
+### 6. Summary of AWS Services Used
+- **AWS Lambda**: Serverless compute for scraping, classification, embedding, deduplication, and chatbot
+- **AWS Step Functions**: Orchestrates the ETL pipeline in sequence
+- **AWS Bedrock (Claude, Titan)**: Provides LLM for classification and embeddings
+- **AWS CloudFormation/SAM**: Infrastructure deployment and management
+- **AWS CloudWatch**: Logging and monitoring for Lambda functions
+- **MongoDB Atlas**: Persistent storage and vector search
+- **GitHub Actions**: CI/CD automation
+
+### 7. End-to-End Flow Example
+1. User opens Streamlit dashboard → sees latest news (fetched from MongoDB)
+2. User asks a question → Streamlit calls Chatbot Lambda → Lambda queries MongoDB, uses Bedrock Claude, returns answer
+3. Every 12 hours → Step Function triggers ETL Lambdas in order (scrape → classify → embed → index → deduplicate) → MongoDB updated
+4. All infrastructure and automation managed via CloudFormation and GitHub Actions
 
 ---
 
