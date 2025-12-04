@@ -172,8 +172,7 @@ elif view == "Chat":
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
-                    # TODO: Replace with your API Gateway URL
-                    api_url = "https://your-api-gateway-url.amazonaws.com/prod/chat"
+                    api_url = st.secrets["AWS_API_URL"]
                     
                     response = requests.post(
                         api_url,
