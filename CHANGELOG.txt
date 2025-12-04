@@ -1,6 +1,30 @@
 Project: NewsRAG
 Date: 2025-12-04
 
+## Version 2.0.0 - Chatbot Implementation (2025-12-04)
+
+### Feature: NewsRAG Chatbot
+- **Chatbot Lambda**: Implemented a new Lambda function (`chatbot_lambda.py`) that serves as the backend for a conversational AI.
+- **Bedrock Integration**: The Lambda leverages AWS Bedrock for two key AI tasks:
+    1.  **Titan Embeddings V2**: Generates vector embeddings from user queries.
+    2.  **Claude 3 Sonnet**: Generates natural language responses based on the context of retrieved news articles.
+- **MongoDB Atlas Vector Search**: Performs real-time vector similarity searches on the `articles` collection to find news content relevant to the user's query.
+
+### CloudFormation & Deployment
+- **Initial Chatbot Resources**: Added `ChatbotFunction` and `ChatbotApi` (API Gateway) to the `template.yaml`.
+- **Deployment Troubleshooting**:
+    - Identified and resolved IAM permission errors for the CI/CD user (`newsrag-user`), which initially lacked `apigateway:POST` permissions.
+    - Diagnosed "Missing Authentication Token" errors, which were caused by an improperly configured API Gateway resource (missing `/chat` POST method).
+- **API Gateway Manual Configuration**: Removed the `ChatbotApi` resource from `template.yaml` to allow for manual creation and configuration in the AWS console, simplifying the CI/CD permissions required.
+
+### Streamlit Dashboard
+- **"Chat" View**: Added a new "Chat" tab to the Streamlit dashboard.
+- **Chat Interface**: The view includes a complete chat interface with message history, user input, and responses streamed from the assistant.
+- **API Integration**: The dashboard now makes POST requests to the manually configured API Gateway endpoint to get chatbot responses.
+- **Secrets Management**: Updated the dashboard to fetch sensitive information (MongoDB URI, Dashboard URL, and Chatbot API URL) from Streamlit Secrets (`st.secrets`), with a fallback to environment variables for local development.
+
+---
+
 Summary of recent changes and improvements to the project.
 
 ---
