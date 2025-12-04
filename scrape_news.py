@@ -58,7 +58,7 @@ class NewsAggregator:
         ]
         
         self.api_scrapers = [
-            GuardianAPIScraper(),
+            GuardianAPIScraper(), 
             GNewsAPIScraper(),
             NewsDataIOScraper()
         ]
@@ -68,20 +68,20 @@ class NewsAggregator:
     @staticmethod
     def remove_duplicates(articles: List[Article]) -> List[Article]:
         """
-        Remove exact duplicate articles based on title and summary.
-        Prioritizes API sources over RSS feeds when duplicates exist.
+        Remove exact duplicate articles based on title and summary .
+        Prioritizes API sources over RSS feeds when duplicates exist .
         Also removes syndicated content (same article from different sources).
         
         Args:
             articles: List of Article objects
             
         Returns:
-            Deduplicated list of Article objects
+            Deduplicated list of Article objects 
         """
         # API source names to prioritize
         api_sources = {
             'the guardian api', 'guardian api', 'gnews api', 'newsdata.io api',
-            'newsdata.io', 'gnews', 'currents api'
+            'newsdata.io', 'gnews', 'currents api' # Add more as needed
         }
         
         # Sort articles to process API sources first
