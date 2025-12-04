@@ -7,7 +7,7 @@ Description: >
 Globals:
   Function:
     Timeout: 900
-    MemorySize: 1024check in 
+    MemorySize: 1024 
     Runtime: python3.12
     Environment:
       Variables:
@@ -45,7 +45,22 @@ Resources:
                 - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
                 - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0'
 
-  # 2. Index Manager Function: Checks for and creates the MongoDB vector index.
+  # 2. Embedding Function: Generates embeddings for articles that don't have them.
+  EmbeddingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: NewsRAG-Embedding
+      CodeUri: lambda_package/
+      Handler: embedding_lambda.lambda_handler
+      Description: Generates and saves vector embeddings for news articles.
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['bedrock:InvokeModel']
+              Resource:
+                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+
+  # 3. Index Manager Function: Checks for and creates the MongoDB vector index.
   IndexManagerFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -54,7 +69,7 @@ Resources:
       Handler: index_manager_lambda.lambda_handler
       Description: Checks if the MongoDB vector search index exists and creates it if needed.
   
-  # 3. Deduplicator Function: Removes duplicate articles using vector search.
+  # 4. Deduplicator Function: Removes duplicate articles using vector search.
   DeduplicatorFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -63,7 +78,7 @@ Resources:
       Handler: deduplicator_lambda.lambda_handler
       Description: Finds and consolidates duplicate articles in MongoDB using vector similarity.
 
-  # 4. Chatbot Function: Handles AI-powered Q&A using vector search and Claude 3 Sonnet.
+  # 5. Chatbot Function: Handles AI-powered Q&A using vector search and Claude 3 Sonnet.
   ChatbotFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -89,13 +104,12 @@ Resources:
       Name: NewsRAG-ETL-Workflow
       Type: STANDARD
       DefinitionUri: statemachine/workflow.asl.json
-      Policies:
-        - LambdaInvokePolicy:
-            FunctionName: !Ref NewsScraperFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref IndexManagerFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref DeduplicatorFunction
+      DefinitionSubstitutions:
+        NewsScraperFunction: !Ref NewsScraperFunction
+        EmbeddingFunction: !Ref EmbeddingFunction
+        IndexManagerFunction: !Ref IndexManagerFunction
+        DeduplicatorFunction: !Ref DeduplicatorFunction
+      Role: !GetAtt NewsETLStateMachineRole.Arn
       Events:
         ScheduledTrigger:
           Type: Schedule
@@ -104,6 +118,33 @@ Resources:
             Description: Triggers the NewsRAG ETL workflow every 12 hours.
             Schedule: rate(12 hours)
             Enabled: true
+
+  NewsETLStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt NewsScraperFunction.Arn
+                  - !GetAtt EmbeddingFunction.Arn
+                  - !GetAtt IndexManagerFunction.Arn
+                  - !GetAtt DeduplicatorFunction.Arn
+
 
   # =====================================================================================
   # == IAM Roles (implicit roles created by SAM are sufficient for basic Lambda execution)
@@ -126,6 +167,9 @@ Outputs:
   NewsScraperFunction:
     Description: "Name of the Scraper Lambda function"
     Value: !Ref NewsScraperFunction
+  EmbeddingFunction:
+    Description: "Name of the Embedding Lambda function"
+    Value: !Ref EmbeddingFunction
   IndexManagerFunction:
     Description: "Name of the Index Manager Lambda function"
     Value: !Ref IndexManagerFunction
