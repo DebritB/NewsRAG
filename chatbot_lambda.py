@@ -133,23 +133,36 @@ def search_articles(collection, query_embedding, max_results=5):
 def generate_response(query, articles):
     """Generate AI response using Claude 3 Sonnet based on relevant articles."""
     try:
-        # Prepare context from articles
-        context = "Based on the following recent news articles:\n\n"
-        
-        for i, article in enumerate(articles, 1):
-            context += f"Article {i}:\n"
-            context += f"Title: {article.get('title', 'N/A')}\n"
-            context += f"Source: {article.get('source', 'N/A')}\n"
-            context += f"Category: {article.get('category', 'N/A')}\n"
-            context += f"Summary: {article.get('summary', article.get('content', 'N/A')[:500])}\n"
-            context += f"Published: {article.get('published_at', 'N/A')}\n\n"
+        # Prepare a compact context from articles (title, source, summary, url)
+        context_entries = []
+        sources_list = []
+        for article in articles:
+            title = article.get('title', 'N/A')
+            source = article.get('source', 'N/A')
+            summary = article.get('summary') or (article.get('content') or "")[:500]
+            published = article.get('published_at', 'N/A')
+            url = article.get('url', '')
+            context_entries.append(f"Title: {title}\nSource: {source}\nPublished: {published}\nSummary: {summary}\n")
+            if url:
+                sources_list.append(f"{title} — {url}")
+        context = "\n\n".join(context_entries)
         
         # Create prompt for Claude
-        user_prompt = f"""Answer the user's question based on the provided news articles. Be informative, accurate, and cite sources when possible. If the articles don't fully answer the question, say so.
+        user_prompt = f"""You are a concise and accurate news assistant. Use the following article summaries to answer the user's question.
 
-User Question: {query}
+    Instructions:
+    - Provide a short (2-3 sentence) summary answering the user. Do not reference article numbers (e.g., "Article 1").
+    - Include a 'Sources:' section after the summary listing each article title and a link to the original article.
+    - Avoid repeating long blocks of text from the articles. If the articles do not fully answer the question, state that and suggest next steps.
 
-{context}"""
+    User Question: {query}
+
+    Article Context:
+    {context}
+
+    Sources:
+    {"\n".join(sources_list)}
+    """
         
         # Invoke Claude 3 Sonnet
         response = bedrock.invoke_model(
