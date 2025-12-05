@@ -198,7 +198,7 @@ General Rules:
 - Never hallucinate or add outside knowledge.
 - Never include URLs in the answer.
 - Answer ONLY using the article context below.
-- If you are producing something like " The articles cover topics such as" just mention: "The articles cover topics such as four follwoing categories only: finance, sports, lifestyle, music (without adding any extra words)".
+- If none of the articles relate to the user's query, you must return EXACTLY the following fallback sentence and NOTHING else: "The provided articles do not contain enough information to answer that."
 
 User Question: {query}
 
@@ -228,12 +228,7 @@ Article Context:
 
     model_answer = model_answer.replace("Sources:", "").strip()
 
-    FALLBACK_PATTERN = (
-        r"(?i)the provided articles?\s+("
-            r"do not contain enough(?:\s+\w+)*\s+information"
-            r"|cover topics?\s+finance, sports, lifestyle, music"
-        r")"
-    )
+    FALLBACK_PATTERN = "The provided articles do not contain enough information to answer that."
 
     if re.search(FALLBACK_PATTERN, model_answer):
         return "The provided articles do not contain enough information to answer that.", None
