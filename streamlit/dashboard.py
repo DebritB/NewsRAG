@@ -171,6 +171,7 @@ elif view == "Chat":
                         # Extract ONLY the "response" field
                         if "response" in response_data:
                             bot_response = response_data["response"]
+                            sources = response_data.get("sources", []) or []
 
                         elif "body" in response_data:
                             inner_json = json.loads(response_data["body"])
@@ -190,6 +191,20 @@ elif view == "Chat":
 
                 # Display clean final answer only
                 st.markdown(bot_response)
+
+                # Render sources separately (title + [click here]) if present
+                try:
+                    if 'sources' in locals() and sources:
+                        st.markdown("**Sources:**")
+                        for s in sources:
+                            title = s.get('title', 'Source')
+                            url = s.get('url', '')
+                            # Use [click here] as the anchor text per design
+                            if url:
+                                st.markdown(f"- {title} — [click here]({url})")
+                except Exception:
+                    # If something goes wrong with sources formatting, ignore to avoid user disruption
+                    pass
 
         # Save assistant message
         st.session_state.messages.append({"role": "assistant", "content": bot_response})

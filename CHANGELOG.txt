@@ -161,6 +161,7 @@ C. Response Handling & Error Logging
 ------------------------------------------------------------
 - Improved debug logs for empty/malformed chatbot responses.
 - Adjusted parsing logic for Claude message formats.
+ - Chatbot now returns a deduplicated `sources` list in the JSON response and avoids embedding raw URLs in the generated text; UI should render `[click here]` links from the `sources` entries.
 
 ============================================================
 6. DATA PIPELINE FIXES (FROM CI/CD HISTORY)
