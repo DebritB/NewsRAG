@@ -7,6 +7,8 @@ import json
 import os
 import boto3
 from pymongo import MongoClient
+import re
+
 
 # Environment variables
 MONGODB_URI = os.environ.get('MONGODB_URI')
@@ -225,9 +227,10 @@ Article Context:
 
     model_answer = model_answer.replace("Sources:", "").strip()
 
-    FALLBACK = "the provided articles do not contain enough information"
-    if FALLBACK in model_answer.lower():  
-        return model_answer, None
+    FALLBACK_PATTERN = r"(?i)the provided articles?\s+do not contain enough information"
+
+    if re.search(FALLBACK_PATTERN, model_answer):
+        return "The provided articles do not contain enough information to answer that.", None
 
     if source_link:
         model_answer += f"\n\nSources:\n[Click here]({source_link})"
