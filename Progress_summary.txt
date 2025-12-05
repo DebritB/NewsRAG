@@ -1,0 +1,178 @@
+NewsRAG — Engineering Log & Technical Summary
+Maintainer: Debrit Bhattacharyya
+
+============================================================
+1. OVERVIEW (As of 2025-12-05)
+============================================================
+NewsRAG is a serverless ETL + RAG news intelligence system that ingests,
+classifies, embeds, deduplicates, highlights, and surfaces news articles
+through a dashboard and chatbot.
+
+Stack:
+- AWS Step Functions
+- AWS Lambda
+- Amazon Bedrock (Titan Embeddings, Claude 3 Sonnet/Haiku)
+- MongoDB Atlas + Vector Search
+- Streamlit Dashboard
+- CloudFormation (SAM)
+- GitHub CI/CD
+
+============================================================
+2. TRIGGER MECHANISM (Corrected)
+============================================================
+NewsRAG does NOT use EventBridge scheduling.
+
+ETL pipeline is triggered by:
+1. A Step Function (defined in template.yaml)
+2. CI/CD automatic triggering after each deployment
+
+============================================================
+3. DEVELOPMENT TIMELINE (Up to 2025-12-05)
+============================================================
+
+A. 2025-11-29 — 2025-11-30
+- Full ETL pipeline created (4 Lambdas)
+- Local testing harness
+- Logging + debugging tools
+
+B. 2025-12-01 — 2025-12-04
+- Index manager debugging
+- Scraper confidence tuning
+
+C. Chatbot Lambda + API Gateway
+- Claude integration
+- Titan Embeddings V2
+- Deployment fixes
+- POST /chat route established
+
+D. Streamlit Dashboard
+- Chat tab
+- Error logging
+- AWS_API_URL correction
+
+============================================================
+4. NEW FEATURES (2025-12-05)
+============================================================
+- Full HTML extraction for content
+- Sanitization framework
+- RSS extraction harness
+- Production integration for extraction
+- Packaging fixes for Lambda modules
+
+============================================================
+5. CHATBOT INTEGRATION IMPROVEMENTS
+============================================================
+- Packaging fixes
+- Proxy routing fixes
+- Cleaned Claude response parsing
+
+============================================================
+6. DATA PIPELINE FIXES
+============================================================
+- Date handling fixes
+- Deduplication improvements
+- TTL recommendations
+
+============================================================
+7. AUTOMATIC ARTICLE HIGHLIGHTING
+============================================================
+Weighted scoring:
+- 60% keywords
+- 40% occurrence count
+Top 5 highlighted.
+
+============================================================
+8. CI/CD PIPELINE EVOLUTION
+============================================================
+- Automatic Step Function trigger
+- 31 workflow runs analysed
+
+============================================================
+9. DASHBOARD UI ENHANCEMENTS
+============================================================
+- Removed date selectors
+- Added charts
+- Added author fallback
+
+============================================================
+10. PERFORMANCE NOTES
+============================================================
+Scraper still sequential. Multithreading planned.
+
+============================================================
+11. ARCHITECTURE SUMMARY
+============================================================
+Trigger: Manual or CI/CD Step Function  
+Pipeline: scrape → embed → index → deduplication
+Outputs: MongoDB + UI + Chatbot
+
+============================================================
+12. DEBUGGING & SYSTEM HARDENING — 2025-12-06
+============================================================
+
+A. Chatbot Guardrails — Major Overhaul
+--------------------------------------
+1. Meaningless Query Detection
+Queries like “give”, “tell”, “something”, “news” now return:
+→ “Please enter a more specific query.”
+
+2. Category Detection Rewritten
+Supported categories override unsupported ones.
+Fix prevents false blocks.
+
+3. Unsupported Category Hard Guardrail
+Queries about politics, tech, science, war, climate, crypto return:
+→ “The provided articles only cover finance, sports, music, or lifestyle topics.”
+
+B. Multi-Category Query Handling
+--------------------------------
+Queries referencing multiple supported categories (e.g., finance + sports)
+now instruct Claude to summarise only those topics.
+
+C. Fallback Logic — Strengthened
+--------------------------------
+Claude’s varied fallback phrasing normalised to:
+→ “The provided articles do not contain enough information to answer that.”
+
+D. URL Output Removal
+--------------------------------
+All URLs removed from:
+- Claude input
+- Context block
+- Chatbot output  
+Fixes link mismatches and inconsistent navigation.
+
+E. Prompt Engineering Rebuilt
+--------------------------------
+Added extended interpretation examples and strict rules:
+- No hallucinations
+- No URLs
+- No apologies
+- 2–3 sentence answers
+- Use ONLY context
+- Category enforcement
+- Safe multi-topic behaviour
+
+F. Vector Search & Context Formatting
+-------------------------------------
+- Removed URL leakage
+- Clean 4-field article formatting
+- Stable ordering for Claude
+
+G. Frontend–Lambda Integration Fixes
+-------------------------------------
+- Chat now reads only `response` field
+- Better error handling and UI stability
+
+H. Edge Case Stress Testing Completed
+-------------------------------------
+Validated behaviour across:
+- Useless queries
+- Unsupported categories
+- Multi-category
+- Adversarial prompts
+- Prompt injections
+- URL requests
+- Irrelevant topics
+
+
