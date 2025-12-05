@@ -198,6 +198,7 @@ General Rules:
 - Never hallucinate or add outside knowledge.
 - Never include URLs in the answer.
 - Answer ONLY using the article context below.
+- If you are producing something like " The articles cover topics such as" just mention four categories finance, sports, lifestyle, music (without adding any extra words/news/other categories).
 
 User Question: {query}
 
