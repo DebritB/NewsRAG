@@ -5,6 +5,7 @@ and using AWS Bedrock to generate AI-powered responses.
 """
 import json
 import os
+import re
 import boto3
 from pymongo import MongoClient
 from datetime import datetime, timedelta
@@ -18,15 +19,7 @@ MONGODB_COLLECTION = os.environ.get('MONGODB_COLLECTION', 'articles')
 bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 
 def lambda_handler(event, context):
-    """
-    Main Lambda handler for chatbot queries.
-    
-    Expected event format:
-    {
-        "query": "What are the latest developments in AI?",
-        "max_results": 5  # Optional, default 5
-    }
-    """
+
     try:
         # Parse input
         body = json.loads(event.get('body', '{}'))
@@ -53,9 +46,24 @@ def lambda_handler(event, context):
         
         if not relevant_articles:
             response_text = "I couldn't find any relevant news articles for your query. Please try rephrasing or check back later for new articles."
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS'
+                },
+                'body': json.dumps({
+                    'query': query,
+                    'response': response_text,
+                    'articles_used': 0,
+                    'sources': []
+                })
+            }
         else:
             # Generate AI response using Bedrock
-            response_text = generate_response(query, relevant_articles)
+            response_text, sources = generate_response(query, relevant_articles)
         
         return {
             'statusCode': 200,
@@ -65,11 +73,12 @@ def lambda_handler(event, context):
                 'Access-Control-Allow-Headers': 'Content-Type',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS'
             },
-            'body': json.dumps({
-                'query': query,
-                'response': response_text,
-                'articles_used': len(relevant_articles)
-            })
+                'body': json.dumps({
+                    'query': query,
+                    'response': response_text,
+                    'articles_used': len(relevant_articles),
+                    'sources': sources
+                })
         }
         
     except Exception as e:
@@ -135,7 +144,9 @@ def generate_response(query, articles):
     try:
         # Prepare a compact context from articles (title, source, summary, url)
         context_entries = []
-        sources_list = []
+        # Use ordered dict to dedupe by URL
+        from collections import OrderedDict
+        deduped_sources = OrderedDict()
         for article in articles:
             title = article.get('title', 'N/A')
             source = article.get('source', 'N/A')
@@ -143,8 +154,8 @@ def generate_response(query, articles):
             published = article.get('published_at', 'N/A')
             url = article.get('url', '')
             context_entries.append(f"Title: {title}\nSource: {source}\nPublished: {published}\nSummary: {summary}\n")
-            if url:
-                sources_list.append(f"{title} — {url}")
+            if url and url not in deduped_sources:
+                deduped_sources[url] = title
         context = "\n\n".join(context_entries)
         
         # Create prompt for Claude
@@ -152,8 +163,9 @@ def generate_response(query, articles):
 
     Instructions:
     - Provide a short (2-3 sentence) summary answering the user. Do not reference article numbers (e.g., "Article 1").
-    - Include a 'Sources:' section after the summary listing each article title and a link to the original article.
+    - Include a 'Sources:' section after the summary listing each article title with the text '[click here]' instead of the full URL (do NOT include raw URLs anywhere in the summary or inline text; only use '[click here]' in the Sources section).
     - Avoid repeating long blocks of text from the articles. If the articles do not fully answer the question, state that and suggest next steps.
+    - If user is asking for detailed information, give a bit more detail, but keep it concise.
 
     User Question: {query}
 
@@ -161,7 +173,8 @@ def generate_response(query, articles):
     {context}
 
     Sources:
-    {"\n".join(sources_list)}
+    {"\n".join([f"{title} - [click here]" for title in deduped_sources.values()])}
+    Note: Provide the answer first then list the sources.
     """
         
         # Invoke Claude 3 Sonnet
@@ -183,8 +196,16 @@ def generate_response(query, articles):
         
         response_body = json.loads(response['body'].read())
         generated_text = response_body['content'][0]['text']
+        # Remove raw URLs if present
+        generated_text = re.sub(r"https?://\S+", "", generated_text)
+        # Remove any '[click here]' tokens from the generated text - they should only appear in the final 'Sources' list
+        generated_text = re.sub(r"\[click here\]", "", generated_text)
+        # Collapse multiple whitespace/newlines
+        generated_text = re.sub(r"\s{2,}", " ", generated_text).strip()
         
-        return generated_text.strip()
+        # Return the cleaned generated text and a list of unique sources (title + url)
+        sources_out = [{'title': t, 'url': u} for u, t in deduped_sources.items()]
+        return generated_text.strip(), sources_out
         
     except Exception as e:
         print(f"Response generation error: {str(e)}")

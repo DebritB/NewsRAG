@@ -170,9 +170,11 @@ For a detailed progress report and history of changes, see `CHANGELOG.txt` in th
 	```bash
 	streamlit run streamlit/dashboard.py
 	```
+ - Live demo:
+   https://debrit-newsrag.streamlit.app/
 - Features:
 	- Browse news by category
-	- View deduplication and source stats
+	- Live Dashboard
 	- Chatbot: Ask questions about the latest news
 
 ---
