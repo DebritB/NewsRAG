@@ -213,6 +213,8 @@ Article Context:
     body = json.loads(response["body"].read())
     model_answer = body["content"][0]["text"].strip()
 
+    model_answer = model_answer.replace("Sources:", "").strip()
+
     # Append source link manually
     if source_link:
         model_answer += f"\n\nSources:\n[Click here]({source_link})"
