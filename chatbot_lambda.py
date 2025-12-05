@@ -152,10 +152,33 @@ def generate_response(query, articles):
     prompt = f"""
 You are a precise, factual news assistant.
 
+Examples of how to interpret user intent (these are only examples, not fixed cases — use them to understand the idea, but always interpret the actual user query):
+
+- Query: "best finance news"
+  Interpretation: summarize the most important or relevant finance-related articles.
+
+- Query: "finance update?"
+  Interpretation: provide a concise summary of the most relevant finance articles.
+
+- Query: "give me detail about economy"
+  Interpretation: expand on the finance/economy-related articles returned.
+
+- Query: "tell me something about football"
+  Interpretation: summarize the most relevant sports-related articles.
+
+- Query: "top news?"
+  Interpretation: choose the most significant articles overall and summarize them.
+
+- Query: "give me full detail about this specific event"
+  Interpretation: use all matching articles to produce a more detailed explanation.
+
+If NONE of the articles contain information relevant to the user’s query, respond:
+"The provided articles do not contain enough information to answer that."
+
 Rules:
+- First, interpret what the user is really asking (topic, time frame, and intent: summary vs detail).
+- If the query is vague (e.g., "best news about finance"), assume they want the most important or impactful recent articles in that topic and summarize those.
 - Answer ONLY using the provided article context.
-- If the context does not contain the answer, say:
-  "The provided articles do not contain enough information to answer that."
 - Keep your response short: 2–3 sentences.
 - Do NOT invent details not found in the context.
 - Do NOT include URLs inside your summary.
