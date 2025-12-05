@@ -225,8 +225,8 @@ Article Context:
 
     model_answer = model_answer.replace("Sources:", "").strip()
 
-    FALLBACK = "The provided articles do not contain enough information"
-    if FALLBACK in model_answer:  
+    FALLBACK = "the provided articles do not contain enough information"
+    if FALLBACK in model_answer.lower():  
         return model_answer, None
 
     if source_link:
