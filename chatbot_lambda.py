@@ -1,14 +1,12 @@
 """
 AWS Lambda handler for NewsRAG Chatbot.
-This function handles user queries about news by searching relevant articles
-and using AWS Bedrock to generate AI-powered responses.
+Improved version: safer prompting, clean source link handling,
+and more reliable Claude responses.
 """
 import json
 import os
-import re
 import boto3
 from pymongo import MongoClient
-from datetime import datetime, timedelta
 
 # Environment variables
 MONGODB_URI = os.environ.get('MONGODB_URI')
@@ -18,213 +16,212 @@ MONGODB_COLLECTION = os.environ.get('MONGODB_COLLECTION', 'articles')
 # Bedrock client
 bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 
-def lambda_handler(event, context):
 
+# ---------------------------------------------------------------------------
+# Lambda Handler
+# ---------------------------------------------------------------------------
+def lambda_handler(event, context):
     try:
-        # Parse input
         body = json.loads(event.get('body', '{}'))
         query = body.get('query', '').strip()
         max_results = body.get('max_results', 5)
-        
+
         if not query:
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Query is required'})
-            }
-        
-        # Connect to MongoDB
+            return _response(400, {"error": "Query is required"})
+
+        # Connect to DB
         client = MongoClient(MONGODB_URI)
-        db = client[MONGODB_DATABASE]
-        collection = db[MONGODB_COLLECTION]
-        
-        # Generate embedding for the query using Bedrock Titan
+        collection = client[MONGODB_DATABASE][MONGODB_COLLECTION]
+
+        # Generate embedding
         query_embedding = generate_embedding(query)
-        
-        # Search for relevant articles using vector similarity
+
+        # Search MongoDB vector index
         relevant_articles = search_articles(collection, query_embedding, max_results)
-        
+
         if not relevant_articles:
-            response_text = "I couldn't find any relevant news articles for your query. Please try rephrasing or check back later for new articles."
-            return {
-                'statusCode': 200,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'Content-Type',
-                    'Access-Control-Allow-Methods': 'POST, OPTIONS'
-                },
-                'body': json.dumps({
-                    'query': query,
-                    'response': response_text,
-                    'articles_used': 0,
-                    'sources': []
-                })
-            }
-        else:
-            # Generate AI response using Bedrock
-            response_text, sources = generate_response(query, relevant_articles)
-        
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS'
-            },
-                'body': json.dumps({
-                    'query': query,
-                    'response': response_text,
-                    'articles_used': len(relevant_articles),
-                    'sources': sources
-                })
-        }
-        
+            msg = "No relevant news found for your query. Try rephrasing."
+            return _response(200, {
+                "query": query,
+                "response": msg,
+                "articles_used": 0,
+                "sources": []
+            })
+
+        # Generate answer
+        answer_text, source_link = generate_response(query, relevant_articles)
+
+        return _response(200, {
+            "query": query,
+            "response": answer_text,
+            "articles_used": len(relevant_articles),
+            "sources": [source_link] if source_link else []
+        })
+
     except Exception as e:
         print(f"Error: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Internal server error'})
-        }
+        return _response(500, {"error": "Internal server error"})
 
+
+# ---------------------------------------------------------------------------
+# Embedding Generator
+# ---------------------------------------------------------------------------
 def generate_embedding(text):
     """Generate vector embedding for text using Bedrock Titan."""
-    try:
-        response = bedrock.invoke_model(
-            modelId='amazon.titan-embed-text-v2:0',
-            body=json.dumps({
-                'inputText': text
-            })
-        )
-        
-        response_body = json.loads(response['body'].read())
-        return response_body['embedding']
-    except Exception as e:
-        print(f"Embedding generation error: {str(e)}")
-        raise
+    payload = {"inputText": text}
 
+    response = bedrock.invoke_model(
+        modelId="amazon.titan-embed-text-v2:0",
+        body=json.dumps(payload)
+    )
+
+    body = json.loads(response["body"].read())
+    return body["embedding"]
+
+
+# ---------------------------------------------------------------------------
+# MongoDB Vector Search
+# ---------------------------------------------------------------------------
 def search_articles(collection, query_embedding, max_results=5):
-    """Search for relevant articles using vector similarity."""
     try:
         pipeline = [
             {
-                '$vectorSearch': {
-                    'index': 'vector_index',  # Your vector search index name
-                    'path': 'embedding',
-                    'queryVector': query_embedding,
-                    'numCandidates': 100,
-                    'limit': max_results
+                "$vectorSearch": {
+                    "index": "vector_index",
+                    "path": "embedding",
+                    "queryVector": query_embedding,
+                    "numCandidates": 100,
+                    "limit": max_results
                 }
             },
             {
-                '$project': {
-                    '_id': 0,
-                    'title': 1,
-                    'content': 1,
-                    'summary': 1,
-                    'source': 1,
-                    'published_at': 1,
-                    'url': 1,
-                    'category': 1,
-                    'score': {'$meta': 'vectorSearchScore'}
+                "$project": {
+                    "_id": 0,
+                    "title": 1,
+                    "content": 1,
+                    "summary": 1,
+                    "source": 1,
+                    "published_at": 1,
+                    "url": 1,
+                    "category": 1,
+                    "score": {"$meta": "vectorSearchScore"}
                 }
             }
         ]
-        
-        results = list(collection.aggregate(pipeline))
-        return results
+
+        return list(collection.aggregate(pipeline))
+
     except Exception as e:
-        print(f"Vector search error: {str(e)}")
+        print("Vector Search Error:", e)
         return []
 
+
+# ---------------------------------------------------------------------------
+# Claude Response Generator
+# ---------------------------------------------------------------------------
 def generate_response(query, articles):
-    """Generate AI response using Claude 3 Sonnet based on relevant articles."""
-    try:
-        # Prepare a compact context from articles (title, source, summary, url)
-        context_entries = []
-        # Use ordered dict to dedupe by URL
-        from collections import OrderedDict
-        deduped_sources = OrderedDict()
-        for article in articles:
-            title = article.get('title', 'N/A')
-            source = article.get('source', 'N/A')
-            summary = article.get('summary') or (article.get('content') or "")[:500]
-            published = article.get('published_at', 'N/A')
-            url = article.get('url', '')
-            context_entries.append(f"Title: {title}\nSource: {source}\nPublished: {published}\nSummary: {summary}\n")
-            if url and url not in deduped_sources:
-                deduped_sources[url] = title
-        context = "\n\n".join(context_entries)
-        
-        # Create prompt for Claude
-        user_prompt = f"""You are a concise and accurate news assistant. Use the following article summaries to answer the user's question.
-
-    Instructions:
-    - Provide a short (2-3 sentence) summary answering the user. Do not reference article numbers (e.g., "Article 1").
-    - Include a 'Sources:' section after the summary listing each article title with the text '[click here]' instead of the full URL (do NOT include raw URLs anywhere in the summary or inline text; only use '[click here]' in the Sources section).
-    - Avoid repeating long blocks of text from the articles. If the articles do not fully answer the question, state that and suggest next steps.
-    - If user is asking for detailed information, give a bit more detail, but keep it concise.
-
-    User Question: {query}
-
-    Article Context:
-    {context}
-
-    Sources:
-    {"\n".join([f"{title} - [click here]" for title in deduped_sources.values()])}
-    Note: Provide the answer first then list the sources.
     """
-        
-        # Invoke Claude 3 Sonnet
-        response = bedrock.invoke_model(
-            modelId='anthropic.claude-3-sonnet-20240229-v1:0',
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
-                "system": "You are a helpful news assistant. Provide accurate, well-cited answers based on the news articles provided. Keep responses concise but comprehensive.",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
-                ],
-                "temperature": 0.3
-            })
-        )
-        
-        response_body = json.loads(response['body'].read())
-        generated_text = response_body['content'][0]['text']
-        # Remove raw URLs if present
-        generated_text = re.sub(r"https?://\S+", "", generated_text)
-        # Remove any '[click here]' tokens from the generated text - they should only appear in the final 'Sources' list
-        generated_text = re.sub(r"\[click here\]", "", generated_text)
-        # Collapse multiple whitespace/newlines
-        generated_text = re.sub(r"\s{2,}", " ", generated_text).strip()
-        
-        # Return the cleaned generated text and a list of unique sources (title + url)
-        sources_out = [{'title': t, 'url': u} for u, t in deduped_sources.items()]
-        return generated_text.strip(), sources_out
-        
-    except Exception as e:
-        print(f"Response generation error: {str(e)}")
-        return "Sorry, I encountered an error generating a response. Please try again."
+    Build a safer prompt, generate answer with Claude,
+    and return a single source link.
+    """
 
-# Handle CORS preflight requests
-def handle_options():
+    # Build compact summaries
+    context_parts = []
+    source_link = None
+
+    for i, article in enumerate(articles):
+        title = article.get("title", "N/A")
+        source = article.get("source", "N/A")
+        published = article.get("published_at", "N/A")
+        summary = article.get("summary") or (article.get("content") or "")[:300]
+        url = article.get("url", "")
+
+        if i == 0 and url:
+            source_link = url  # Only one link will be used
+
+        context_parts.append(
+            f"Title: {title}\n"
+            f"Source: {source}\n"
+            f"Published: {published}\n"
+            f"Summary: {summary}\n"
+        )
+
+    context_block = "\n\n".join(context_parts)
+
+    # Final prompt for Claude
+    prompt = f"""
+You are a precise, factual news assistant.
+
+Rules:
+- Answer ONLY using the provided article context.
+- If the context does not contain the answer, say:
+  "The provided articles do not contain enough information to answer that."
+- Keep your response short: 2–3 sentences.
+- Do NOT invent details not found in the context.
+- Do NOT include URLs inside your summary.
+- After the answer, write: Sources:
+  Then do NOT add anything else.
+
+User Question: {query}
+
+Article Context:
+{context_block}
+"""
+
+    # Send to Claude (modern message format)
+    response = bedrock.invoke_model(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        body=json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 800,
+            "temperature": 0.3,
+            "system": (
+                "You must answer only using the provided article context. "
+                "Do not speculate, do not hallucinate, and do not add outside knowledge."
+            ),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": prompt}]
+                }
+            ]
+        })
+    )
+
+    body = json.loads(response["body"].read())
+    model_answer = body["content"][0]["text"].strip()
+
+    # Append source link manually for consistency
+    if source_link:
+        model_answer += f"\n\nSources:\n[Click here]({source_link})"
+    else:
+        model_answer += "\n\nSources:\nNo sources available"
+
+    return model_answer, source_link
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _response(status, body_dict):
     return {
-        'statusCode': 200,
-        'headers': {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        "statusCode": status,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Methods": "POST, OPTIONS"
         },
-        'body': json.dumps({})
+        "body": json.dumps(body_dict)
     }
 
-# Main entry point for API Gateway
+
+# CORS preflight
+def handle_options():
+    return _response(200, {})
+
+
 def main(event, context):
-    if event.get('httpMethod') == 'OPTIONS':
+    if event.get("httpMethod") == "OPTIONS":
         return handle_options()
     return lambda_handler(event, context)
