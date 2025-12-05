@@ -1,159 +1,230 @@
-Project: NewsRAG
-Date: 2025-12-04
+NewsRAG — Engineering Log & Technical Summary (Expanded & Corrected)
+Date: 2025-12-05
+Maintainer: Debrit Bhattacharyya
 
-## Version 2.0.0 - Chatbot Implementation (2025-12-04)
+============================================================
+1. OVERVIEW
+============================================================
+NewsRAG is a serverless ETL + RAG news intelligence system that ingests,
+classifies, embeds, deduplicates, highlights, and surfaces news articles
+through a dashboard and chatbot.
 
-### Feature: NewsRAG Chatbot
-- **Chatbot Lambda**: Implemented a new Lambda function (`chatbot_lambda.py`) that serves as the backend for a conversational AI.
-- **Bedrock Integration**: The Lambda leverages AWS Bedrock for two key AI tasks:
-    1.  **Titan Embeddings V2**: Generates vector embeddings from user queries.
-    2.  **Claude 3 Sonnet**: Generates natural language responses based on the context of retrieved news articles.
-- **MongoDB Atlas Vector Search**: Performs real-time vector similarity searches on the `articles` collection to find news content relevant to the user's query.
+Stack:
+- AWS Step Functions
+- AWS Lambda
+- Amazon Bedrock (Titan Embeddings, Claude 3 Sonnet/Haiku)
+- MongoDB Atlas + Vector Search
+- Streamlit Dashboard
+- CloudFormation (SAM)
+- GitHub CI/CD
 
-### CloudFormation & Deployment
-- **Initial Chatbot Resources**: Added `ChatbotFunction` and `ChatbotApi` (API Gateway) to the `template.yaml`.
-- **API Gateway Manual Configuration**: Removed the `ChatbotApi` resource from `template.yaml` to allow for manual creation, which proved essential for debugging.
-- **End-to-End Troubleshooting**:
-    1.  **IAM Permissions**: Resolved initial 403 errors by adding `apigateway:POST` permissions to the CI/CD user role.
-    2.  **Missing Endpoint**: Fixed `403 Missing Authentication Token` errors by creating the `/chat` resource and `POST` method in API Gateway, which were initially missing.
-    3.  **Deployment Packaging**: Solved a Lambda `Runtime.ImportModuleError` by correcting the `deploy.sh` script to ensure `chatbot_lambda.py` was included in the deployment package.
-    4.  **Bedrock Model Access**: Overcame a Bedrock `AccessDeniedException` by completing the necessary AWS Marketplace subscription for the Claude 3 Sonnet model.
-    5.  **Lambda Invocation**: Fixed the final `403 Forbidden` error by re-linking the API Gateway `POST` method to the Lambda, which correctly applied the resource-based policy allowing API Gateway to invoke the function.
-    6.  **Proxy Integration**: Identified that the "Lambda Proxy Integration" setting was the root cause of silent failures in the Streamlit app. Enabling it ensures that the request/response format matches what the Lambda function and Streamlit app expect.
-- **Final Outcome**: After a comprehensive debugging process, the API Gateway was correctly configured, all IAM and service permissions were granted, and the chatbot is now fully operational.
+============================================================
+2. TRIGGER MECHANISM (CORRECTED)
+============================================================
+NewsRAG does **not** use EventBridge scheduling.
 
-### Streamlit Dashboard
-- **"Chat" View**: Added a new "Chat" tab to the Streamlit dashboard.
-- **Chat Interface**: The view includes a complete chat interface with message history, user input, and responses streamed from the assistant.
-- **API Integration**: The dashboard now makes POST requests to the manually configured API Gateway endpoint to get chatbot responses.
-- **Secrets Management**: Updated the dashboard to fetch sensitive information (MongoDB URI, Dashboard URL, and Chatbot API URL) from Streamlit Secrets (`st.secrets`), with a fallback to environment variables for local development.
+Instead, the ETL pipeline is triggered exclusively by:
 
----
+1. **A Step Function execution defined inside template.yaml (SAM)**  
+   The Step Function is deployed via SAM/CloudFormation and is invoked
+   manually or programmatically.
 
-Summary of recent changes and improvements to the project.
+2. **CI/CD automatic triggering after each deployment**  
+   After GitHub Actions completes a deployment, it immediately triggers:
+   - NewsRAG-ETL-Workflow
+   This ensures the system processes fresh data after every code update.
 
----
+There is **no automated scheduled EventBridge rule** in this architecture.
 
-### Feature: Automatic Article Highlighting
+============================================================
+3. DEVELOPMENT TIMELINE
+============================================================
 
--   **Goal**: Automatically identify and feature the top 5 most important articles for each news category on the dashboard.
--   **Data Model Update**: Added a new boolean field named `highlight` to the `Article` data model in `models/article.py`.
--   **Scoring Logic**: Implemented a scoring algorithm in `deduplicator_lambda.py`. The score is a weighted average:
-    -   **60% Weight**: Given to articles containing keywords like 'breaking', 'alert', 'exclusive', 'major', etc., in the title or summary.
-    -   **40% Weight**: Given based on the article's `occurrence_count` (how many sources reported it), normalized to a scale of 1 to 10.
--   **Implementation**: The `deduplicator_lambda` now calculates this score for all recent articles, identifies the top 5 per category, and sets their `highlight` flag to `true` in MongoDB.
+------------------------------------------------------------
+A. 2025-11-29 — 2025-11-30
+------------------------------------------------------------
+Full ETL pipeline created with four Lambdas:
+1. lambda_function.py — Scrape + classify
+2. embedding_lambda.py — Generate embeddings
+3. index_manager_lambda.py — Manage vector index
+4. deduplicator_lambda.py — Deduplicate + highlight
 
----
+Local testing harness added, including RSS scrapers, SMH extractor,
+log checker, DB cleaner, and end-to-end ETL test drivers.
 
-### Feature: Enhanced CI/CD Workflow
+Added structured logging, timings, and debugging metadata.
 
--   **Goal**: Ensure that after deploying new code, the data processing pipeline runs immediately to reflect the changes.
--   **Implementation**: Modified the `./.github/workflows/deploy.sh` script.
--   **Functionality**: After the CloudFormation deployment successfully finishes, the script now automatically triggers a new execution of the `NewsRAG-ETL-Workflow` AWS Step Function. This provides immediate feedback on new code without waiting for the next scheduled run.
+------------------------------------------------------------
+B. 2025-12-01 — 2025-12-04
+------------------------------------------------------------
+Index Manager debugging:
+- Fixed dictionary-style access on model classes.
+- Added required 'mappings' to vector index config.
+- Added strict validation and error messages.
 
----
+Scraper Lambda:
+- Confidence thresholds filtered many articles; tuning planned.
 
-### Dashboard (UI) Improvements
+------------------------------------------------------------
+C. Chatbot Lambda + API Gateway
+------------------------------------------------------------
+- Added chatbot_lambda.py to handle query embedding + vector search +
+  Claude 3 Sonnet generation.
+- Integrated Titan Embeddings V2.
+- Multiple deployment fixes to ensure chatbot file included in build.
+- Debugged AccessDeniedException by subscribing to Claude model.
 
--   **Simplified Interface**: Removed all date and time selection components from the Streamlit dashboard for a cleaner, more focused user experience. The dashboard now always shows the latest available highlights.
--   **Data Visualization**: Added two new charts to the top of the dashboard:
-    1.  A bar chart showing the total number of highlighted articles in each category.
-    2.  A pie chart showing the percentage distribution of highlighted articles across categories.
--   **Content Filtering**: The dashboard logic in `streamlit/dashboard.py` was updated to only query and display articles where the `highlight` field is set to `true`.
--   **Author Display**: Updated the article details to display the author's name. If the author is not available, it now correctly displays "NA".
+API Gateway Evolution:
+- Initially added to CloudFormation.
+- Later removed due to SAM proxy integration conflicts.
+- Manually created API Gateway with POST /chat route.
+- Fixed Missing Authentication Token errors.
+- Enabled Lambda Proxy Integration to fix parsing issues.
 
----
+------------------------------------------------------------
+D. Streamlit Dashboard Enhancements
+------------------------------------------------------------
+- Added Chat tab with streamed responses.
+- Added detailed error logging.
+- Configured AWS_API_URL through secrets.
+- Corrected chat response parsing to match Claude output.
 
-### Bug Fixes & Diagnostics
+============================================================
+4. NEW FEATURES (2025-12-05)
+============================================================
 
--   **Lambda Timeout Issue**: Investigated Step Function failures by analyzing CloudWatch logs. Diagnosed that the `NewsScraperFunction` was running too slowly and timing out.
--   **Log Analysis Script**: Located and utilized the `tests/local/check_logs.py` script to efficiently fetch and display logs for specific Lambda functions, speeding up the debugging process.
+------------------------------------------------------------
+A. Full HTML Extraction Module
+------------------------------------------------------------
+Created scrapers/html_extractor.py with:
+- extract_full_content_from_url
+- placeholder detection
+- HTML cleanup + sanitization
+- strict alphanumeric sanitizer for local tests
 
----
+------------------------------------------------------------
+B. Sanitization Framework
+------------------------------------------------------------
+Two sanitizers:
+1. Standard production sanitization
+2. Aggressive alnum-only sanitizer for local testing
 
-### CloudWatch Error Report (Dec 1–4, 2025)
+Environment flags control:
+- TRY_FULL_EXTRACTION_IN_PRODUCTION
+- EXTRACTION_CONTENT_THRESHOLD
+- USE_STRICT_SANITIZER_IN_PRODUCTION
 
-- **NewsRAG-Scraper Lambda**
-    - Numerous articles ignored due to low confidence scores (0.00 or very low). This is expected filtering, but may indicate overly strict thresholds.
+------------------------------------------------------------
+C. Local RSS Extraction Harness
+------------------------------------------------------------
+Supports:
+- --full mode for HTML extraction testing
+- Output metadata: extraction_strategy, _original_len, _extracted_len
 
-- **NewsRAG-IndexManager Lambda**
-    - `TypeError: 'SearchIndexModel' object is not subscriptable` at `index_manager_lambda.py`, line 55. Cause: Attempting to access a class instance as a dictionary. Should use attribute access (`search_index_model.name`).
-    - `AttributeError: 'SearchIndexModel' object has no attribute 'name'`. Indicates the object does not have a `name` attribute.
-    - `ValueError: Could not load index definition from vector_search_index_config.json`. Cause: Missing `'mappings'` key in the configuration file.
-    - Error parsing index configuration file: `'mappings' key not found in index configuration.`
+------------------------------------------------------------
+D. Production Integration
+------------------------------------------------------------
+_post_process_article now:
+- Attempts HTML extraction when thresholds met
+- Tracks metadata for diagnostics
+- Applies appropriate sanitization mode
 
-- **Action Items**
-    - Review and fix attribute access in `index_manager_lambda.py`.
-    - Ensure `vector_search_index_config.json` contains the required `'mappings'` key.
-    - Consider adjusting confidence thresholds in the scraper if too many articles are ignored.
+------------------------------------------------------------
+E. Packaging Fixes
+------------------------------------------------------------
+- Exported missing scrapers.
+- Added html_extractor to lambda_package.
+- Fixed JSON serialization for published_date fields.
+- Improved deduplication date comparison and highlight logic.
+- Recommended DB-side TTL for deleting articles older than 24 hours.
 
----
+============================================================
+5. CHATBOT INTEGRATION IMPROVEMENTS (FROM CI/CD HISTORY)
+============================================================
 
-### Next Step: Performance Optimization
+------------------------------------------------------------
+A. Packaging & Dependency Fixes
+------------------------------------------------------------
+Several deployments revealed:
+- chatbot_lambda.py was omitted from build → fixed packaging rules.
+- streamlit added to requirements.txt for deployment consistency.
 
--   **Problem**: The current scraping process is sequential (one scraper runs after another), causing the Lambda function to run for too long and risk timing out.
--   **Solution**: The next planned task is to modify `scrape_news.py` to use multithreading, allowing all news scrapers to run in parallel. This will dramatically reduce the total execution time.
+------------------------------------------------------------
+B. AWS API Routing & Proxy Fixes
+------------------------------------------------------------
+- POST method not linked to Lambda → fixed integration.
+- Enabled Lambda Proxy Integration for proper JSON structure.
+- Updated dashboard to use AWS_API_URL from secrets.
 
----
+------------------------------------------------------------
+C. Response Handling & Error Logging
+------------------------------------------------------------
+- Improved debug logs for empty/malformed chatbot responses.
+- Adjusted parsing logic for Claude message formats.
 
-## Project Documentation: The NewsRAG ETL Pipeline
+============================================================
+6. DATA PIPELINE FIXES (FROM CI/CD HISTORY)
+============================================================
 
-### 1. Project Overview
+------------------------------------------------------------
+A. Date Handling Corrections
+------------------------------------------------------------
+Multiple commits fixed:
+- Ensuring published_date stored as datetime.
+- Correcting deletion query to use published_date.
+- Fixing highlight logic to handle date comparisons correctly.
+- Implementing robust cleanup logic for old articles.
 
-The NewsRAG project is a fully automated, serverless ETL (Extract, Transform, Load) pipeline built on AWS. Its primary purpose is to aggregate news articles from various sources, intelligently classify them, enrich them with vector embeddings for semantic understanding, and store them in a clean, deduplicated MongoDB database. The entire process is orchestrated by an AWS Step Function, ensuring resilience and scalability.
+------------------------------------------------------------
+B. Step Function Invocation & Template Fixes
+------------------------------------------------------------
+- Corrected IAM policy formatting.
+- Fixed Step Function → Lambda permission errors.
+- Corrected MemorySize typo in template.yaml.
+- Rolled back faulty deployments as needed.
 
-**Core Technologies:**
+============================================================
+7. AUTOMATIC ARTICLE HIGHLIGHTING
+============================================================
+Added boolean “highlight” field. Scoring:
+- 60% keyword weight
+- 40% occurrence_count weight (normalized)
+Top 5 per category marked highlight=true.
 
-- Orchestration: AWS Step Functions
-- Compute: AWS Lambda (Python 3.12)
-- AI/LLMs: Amazon Bedrock (Anthropic Claude 3 Haiku for classification, Amazon Titan for embeddings)
-- Database: MongoDB Atlas (including Vector Search)
-- Deployment: AWS CloudFormation (via AWS SAM in template.yaml) and a PowerShell deployment script.
+============================================================
+8. CI/CD PIPELINE EVOLUTION
+============================================================
+- Automatic Step Function trigger after deployment.
+- 31 workflow runs validating CI/CD stability.
+- Repo cleanup: README updates, App Guide, .gitignore improvements.
 
-### 2. The Journey: Problems Faced & Solutions Implemented
+============================================================
+9. DASHBOARD UI ENHANCEMENTS
+============================================================
+- Removed date selectors; always shows latest highlights.
+- Added bar + pie charts for highlight distribution.
+- Display author with fallback "NA".
 
-**Problem 1: Lambda Timeouts and API Throttling**
+============================================================
+10. PERFORMANCE NOTES
+============================================================
+Scraping currently sequential → causes Lambda timeout risk.
+Planned: multithreaded scraping for major speed boost.
 
-*The Issue*: The initial design placed all logic into a single, large Lambda function, which was frequently failing or timing out due to Bedrock API rate limiting.
+============================================================
+11. ARCHITECTURE SUMMARY (CORRECTED)
+============================================================
+Trigger:  
+- **Manual or CI/CD-triggered Step Function execution**  
+- No EventBridge used.
 
-*The Logic You Selected (The Solution)*: To decouple the process, breaking the monolithic function into smaller, specialized functions.
+Pipeline:
+1. Scrape & classify
+2. Embed
+3. Index maintenance
+4. Dedup & highlight
 
-*How We Solved It*: We adopted AWS Step Functions to orchestrate four distinct Lambdas (ScrapeAndClassify, GenerateEmbeddings, IndexManager, Deduplicator), isolating the time-intensive steps.
-
-**Problem 2: Inefficient and Costly Classification**
-
-*The Issue*: Relying solely on an LLM for classifying every article would be slow and expensive.
-
-*The Logic You Selected (The Solution)*: To use a hybrid classification strategy for speed and accuracy.
-
-*How We Solved It*: The pipeline first uses a fast, local TF-IDF Keyword Classifier. Only low-confidence articles are sent to Claude for advanced classification.
-
-**Problem 3: Manual Workflow Steps and Fragility**
-
-*The Issue*: Manual steps for index creation and deduplication made the system fragile. A database deletion would break the workflow.
-
-*The Logic You Selected (The Solution)*: To build a fully automated, self-healing system.
-
-*How We Solved It*: We automated index creation and deduplication into their own Lambda functions within the Step Function. We also added error handling so the workflow continues even if the initial scraping step fails.
-
-**Problem 4: Project Clutter and Organization**
-
-*The Issue*: The project root was cluttered with application, deployment, and testing scripts.
-
-*The Logic You Selected (The Solution)*: A clean, logical separation between application and testing code.
-
-*How We Solved It*: We created a structured 'tests' folder and moved all testing scripts into it, deleting all unused and duplicate files.
-
-### 3. Final Architecture & Component Breakdown
-
-The final system is an event-driven, orchestrated workflow:
-
-- **Trigger**: An EventBridge rule triggers the workflow every 12 hours.
-- **Orchestrator** (`statemachine/workflow.asl.json`): The Step Function that manages the entire sequence.
-- **Workflow Steps**: `lambda_function.py`, `embedding_lambda.py`, `index_manager_lambda.py`, and `deduplicator_lambda.py`.
-- **Deployment** (`template.yaml` & `deploy.ps1`): The entire infrastructure is defined as code and deployed in a single command.
-- **Testing** (`tests/`): A well-organized suite of local scripts to test individual components.
-
-### 4. Cost
-
-The final architecture is extremely cost-effective, with an estimated total monthly cost of ~$1.65, primarily driven by Amazon Bedrock usage. The serverless nature of Lambda and Step Functions keeps compute costs near zero for this workload.
+Outputs:
+- MongoDB Atlas storage + Vector Search  
+- Streamlit Dashboard  
+- Chatbot API  

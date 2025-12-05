@@ -51,3 +51,12 @@ packaged-template.yaml
 
 # Streamlit secrets
 .streamlit/secrets.toml
+
+# Ignore local test run JSON output
+tests/extract/rss_output*.json
+
+# Ignore all markdown files except README and important docs we track
+*.md
+!README.md
+!COST_ANALYSIS.md
+!VERIFIED_SOURCES.md

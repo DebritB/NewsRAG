@@ -4,10 +4,52 @@ from datetime import datetime
 from typing import List
 from bs4 import BeautifulSoup
 from models import Article
+from .html_extractor import extract_full_content_from_url, is_placeholder_text, sanitize_text_alnum_only
+import os
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+TRY_FULL_EXTRACTION_IN_PRODUCTION = os.getenv('TRY_FULL_EXTRACTION_IN_PRODUCTION', 'true').lower() in ('1', 'true', 'yes')
+EXTRACTION_CONTENT_THRESHOLD = 400
+USE_STRICT_SANITIZER_IN_PRODUCTION = os.getenv('USE_STRICT_SANITIZER_IN_PRODUCTION', 'false').lower() in ('1', 'true', 'yes')
+
+
+def _post_process_article(article: Article) -> Article:
+    try:
+        original_len = len(article.content or '')
+        extracted_len = 0
+        strategy = None
+        if TRY_FULL_EXTRACTION_IN_PRODUCTION and getattr(article, 'url', None):
+            if article.content and len(article.content) > EXTRACTION_CONTENT_THRESHOLD:
+                logger.debug(f"Skipping full extraction for {article.url} because content len > threshold")
+            else:
+                try:
+                    full_content, strategy = extract_full_content_from_url(article.url)
+                    extracted_len = len(full_content or '')
+                    if full_content and not is_placeholder_text(full_content):
+                        article.content = full_content
+                except Exception as e:
+                    logger.debug(f"Full content extraction failed for {article.url}: {e}")
+        article.extraction_strategy = strategy or 'rss'
+        article._original_len = original_len
+        article._extracted_len = extracted_len
+        if isinstance(article.summary, str):
+            if USE_STRICT_SANITIZER_IN_PRODUCTION:
+                article.summary = sanitize_text_alnum_only(article.summary)
+            else:
+                from .html_extractor import sanitize_text
+                article.summary = sanitize_text(article.summary)
+        if isinstance(article.content, str):
+            if USE_STRICT_SANITIZER_IN_PRODUCTION:
+                article.content = sanitize_text_alnum_only(article.content)
+            else:
+                from .html_extractor import sanitize_text
+                article.content = sanitize_text(article.content)
+    except Exception as e:
+        logger.error(f"Error post-processing article {getattr(article, 'url', None)}: {e}")
+    return article
 
 class ABCNewsScraper:
     """Scraper for ABC News Australia RSS feeds - ALL news"""
@@ -59,6 +101,7 @@ class ABCNewsScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing ABC article: {e}")
@@ -145,6 +188,7 @@ class GuardianAUScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing Guardian article: {e}")
@@ -227,6 +271,7 @@ class NewsDotComAUScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing News.com.au article: {e}")
@@ -309,6 +354,7 @@ class SMHScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing SMH article: {e}")
@@ -391,6 +437,7 @@ class TheAgeScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing The Age article: {e}")
@@ -474,6 +521,7 @@ class SBSNewsScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing SBS article: {e}")
@@ -552,6 +600,7 @@ class NineNewsScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing 9News article: {e}")
@@ -630,6 +679,7 @@ class SevenNewsScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing 7News article: {e}")
@@ -708,6 +758,7 @@ class BrisbaneTimesScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing Brisbane Times article: {e}")
@@ -786,6 +837,7 @@ class WATodayScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing WA Today article: {e}")
@@ -864,6 +916,7 @@ class CanberraTimesScraper:
                         keywords=[],
                         image_url=self._extract_image(entry)
                     )
+                    article = _post_process_article(article)
                     articles.append(article)
                 except Exception as e:
                     logger.error(f"Error parsing Canberra Times article: {e}")

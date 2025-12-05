@@ -229,7 +229,45 @@ class NewsAggregator:
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         
         # Convert articles to dictionaries
-        articles_data = [article.to_dict() for article in self.all_articles]
+        articles_data = []
+        for article in self.all_articles:
+            try:
+                ad = article.to_dict() if hasattr(article, 'to_dict') else {
+                    'title': getattr(article, 'title', ''),
+                    'url': getattr(article, 'url', ''),
+                    'source': getattr(article, 'source', ''),
+                    'published_date': getattr(article, 'published_date', None),
+                    'content': getattr(article, 'content', ''),
+                    'summary': getattr(article, 'summary', ''),
+                }
+                # Ensure published_date is JSON serializable
+                pd = ad.get('published_date') if isinstance(ad, dict) else None
+                if pd is None and getattr(article, 'published_date', None):
+                    pd = getattr(article, 'published_date')
+                if pd is not None:
+                    try:
+                        # Convert datetime to ISO format
+                        if hasattr(pd, 'isoformat'):
+                            ad['published_date'] = pd.isoformat()
+                        else:
+                            ad['published_date'] = str(pd)
+                    except Exception:
+                        ad['published_date'] = str(pd)
+            except Exception:
+                ad = {
+                    'title': getattr(article, 'title', ''),
+                    'url': getattr(article, 'url', ''),
+                    'source': getattr(article, 'source', ''),
+                    'published_date': getattr(article, 'published_date', None),
+                    'content': getattr(article, 'content', ''),
+                    'summary': getattr(article, 'summary', ''),
+                }
+                if getattr(article, 'published_date', None):
+                    try:
+                        ad['published_date'] = getattr(article, 'published_date').isoformat()
+                    except Exception:
+                        ad['published_date'] = str(getattr(article, 'published_date'))
+            articles_data.append(ad)
         
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(articles_data, f, indent=2, ensure_ascii=False)
