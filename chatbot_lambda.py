@@ -231,7 +231,7 @@ Article Context:
     FALLBACK_PATTERN = (
         r"(?i)the provided articles?\s+("
             r"do not contain enough(?:\s+\w+)*\s+information"
-            r"|cover topics?\s+such as"
+            r"|cover topics?\s+finance, sports, lifestyle, music"
         r")"
     )
 
