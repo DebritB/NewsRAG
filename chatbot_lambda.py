@@ -137,7 +137,7 @@ def generate_response(query, articles):
         url = article.get("url", "")
 
         if i == 0 and url:
-            source_link = url  # Only one link will be used
+            source_link = url  # Use only the first link
 
         context_parts.append(
             f"Title: {title}\n"
@@ -152,7 +152,7 @@ def generate_response(query, articles):
     prompt = f"""
 You are a precise, factual news assistant.
 
-Examples of how to interpret user intent (these are only examples, not fixed cases — use them to understand the idea, but always interpret the actual user query):
+Examples of how to interpret user intent (these are examples only — use them to understand the idea but always interpret the ACTUAL user query):
 
 - Query: "best finance news"
   Interpretation: summarize the most important or relevant finance-related articles.
@@ -177,13 +177,12 @@ If NONE of the articles contain information relevant to the user’s query, resp
 
 Rules:
 - First, interpret what the user is really asking (topic, time frame, and intent: summary vs detail).
-- If the query is vague (e.g., "best news about finance"), assume they want the most important or impactful recent articles in that topic and summarize those.
+- Only respond with "The provided articles do not contain enough information to answer that" if NONE of the articles relate to the user's topic.
 - Answer ONLY using the provided article context.
 - Keep your response short: 2–3 sentences.
 - Do NOT invent details not found in the context.
 - Do NOT include URLs inside your summary.
-- After the answer, write: Sources:
-  Then do NOT add anything else.
+- Do NOT write "Sources:" anywhere. The system will add sources automatically.
 
 User Question: {query}
 
@@ -191,7 +190,7 @@ Article Context:
 {context_block}
 """
 
-    # Send to Claude (modern message format)
+    # Call Claude
     response = bedrock.invoke_model(
         modelId="anthropic.claude-3-sonnet-20240229-v1:0",
         body=json.dumps({
@@ -214,13 +213,14 @@ Article Context:
     body = json.loads(response["body"].read())
     model_answer = body["content"][0]["text"].strip()
 
-    # Append source link manually for consistency
+    # Append source link manually
     if source_link:
         model_answer += f"\n\nSources:\n[Click here]({source_link})"
     else:
         model_answer += "\n\nSources:\nNo sources available"
 
     return model_answer, source_link
+
 
 
 # ---------------------------------------------------------------------------
