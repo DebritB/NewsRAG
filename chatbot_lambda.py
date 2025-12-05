@@ -27,7 +27,12 @@ def lambda_handler(event, context):
         max_results = body.get('max_results', 5)
 
         if not query:
-            return _response(400, {"error": "Query is required"})
+            return _response(200, {
+                "query": "",
+                "response": "Please enter a query so I can search the news.",
+                "articles_used": 0,
+                "sources": []
+    })
 
         # Connect to DB
         client = MongoClient(MONGODB_URI)
@@ -215,6 +220,12 @@ Article Context:
 
     model_answer = model_answer.replace("Sources:", "").strip()
 
+    FALLBACK = "The provided articles do not contain enough information to"
+
+    # If Claude fallback triggered, do not add sources
+    if model_answer.startswith(FALLBACK):
+        return model_answer, None
+    
     # Append source link manually
     if source_link:
         model_answer += f"\n\nSources:\n[Click here]({source_link})"
