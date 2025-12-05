@@ -1,7 +1,11 @@
 """
 AWS Lambda handler for NewsRAG Chatbot.
-Version with NO URL output. Clean summaries only.
-Includes extended interpretation examples and fallback logic.
+Production-ready version with:
+- No URL output
+- Category enforcement
+- Extended interpretation examples
+- Strict fallback logic
+- Safe, short summaries only
 """
 import json
 import os
@@ -10,22 +14,77 @@ from pymongo import MongoClient
 
 
 # Environment variables
-MONGODB_URI = os.environ.get('MONGODB_URI')
-MONGODB_DATABASE = os.environ.get('MONGODB_DATABASE', 'news_rag')
-MONGODB_COLLECTION = os.environ.get('MONGODB_COLLECTION', 'articles')
+MONGODB_URI = os.environ.get("MONGODB_URI")
+MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "news_rag")
+MONGODB_COLLECTION = os.environ.get("MONGODB_COLLECTION", "articles")
 
 # Bedrock client
-bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
+bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
 
 
 # ---------------------------------------------------------------------------
-# Lambda Handler
+# CATEGORY DETECTION (Python-first guardrails — production pattern)
+# ---------------------------------------------------------------------------
+FINANCE_KEYWORDS = [
+    "finance", "financial", "economy", "economic", "markets", "market",
+    "stock", "stocks", "shares", "business", "bank", "banking", "inflation"
+]
+
+SPORTS_KEYWORDS = [
+    "sport", "sports", "match", "game", "football", "soccer", "cricket",
+    "tennis", "basketball", "rugby", "athletics", "tournament", "league"
+]
+
+MUSIC_KEYWORDS = [
+    "music", "musician", "song", "songs", "album", "concert", "band",
+    "singer", "playlist", "gig"
+]
+
+LIFESTYLE_KEYWORDS = [
+    "lifestyle", "life style", "health", "wellness", "wellbeing", "well-being",
+    "relationship", "relationships", "dating", "travel", "holiday", "vacation",
+    "fitness", "exercise", "diet", "nutrition", "living", "self-care",
+    "self care"
+]
+
+OTHER_CATEGORY_HINTS = [
+    "politic", "election", "government", "policy", "parliament",
+    "senate", "technology", "tech", "software", "hardware", "ai",
+    "artificial intelligence", "science", "scientific", "space",
+    "nasa", "astronomy", "climate", "environment", "weather",
+    "war", "conflict", "military", "defence", "defense",
+    "crypto", "cryptocurrency", "bitcoin", "ethereum", "blockchain"
+]
+
+
+def detect_category(query: str):
+    """Return: finance | sports | music | lifestyle | other | none."""
+    q = query.lower()
+
+    if any(k in q for k in FINANCE_KEYWORDS):
+        return "finance"
+    if any(k in q for k in SPORTS_KEYWORDS):
+        return "sports"
+    if any(k in q for k in MUSIC_KEYWORDS):
+        return "music"
+    if any(k in q for k in LIFESTYLE_KEYWORDS):
+        return "lifestyle"
+
+    # Explicit unsupported category detected
+    if any(k in q for k in OTHER_CATEGORY_HINTS):
+        return "other"
+
+    return "none"
+
+
+# ---------------------------------------------------------------------------
+# LAMBDA HANDLER
 # ---------------------------------------------------------------------------
 def lambda_handler(event, context):
     try:
-        body = json.loads(event.get('body', '{}'))
-        query = body.get('query', '').strip()
-        max_results = body.get('max_results', 5)
+        body = json.loads(event.get("body", "{}"))
+        query = body.get("query", "").strip()
+        max_results = body.get("max_results", 5)
 
         if not query:
             return _response(200, {
@@ -34,6 +93,16 @@ def lambda_handler(event, context):
                 "articles_used": 0
             })
 
+        # Preprocessing guardrail — PRODUCTION PATTERN
+        category = detect_category(query)
+        if category == "other":
+            return _response(200, {
+                "query": query,
+                "response": "The provided articles only cover finance, sports, music, or lifestyle topics.",
+                "articles_used": 0
+            })
+
+        # Database and vector search
         client = MongoClient(MONGODB_URI)
         collection = client[MONGODB_DATABASE][MONGODB_COLLECTION]
 
@@ -56,12 +125,12 @@ def lambda_handler(event, context):
         })
 
     except Exception as e:
-        print("Error:", str(e))
+        print("Error:", e)
         return _response(500, {"error": "Internal server error"})
 
 
 # ---------------------------------------------------------------------------
-# Embeddings
+# EMBEDDINGS
 # ---------------------------------------------------------------------------
 def generate_embedding(text):
     payload = {"inputText": text}
@@ -76,7 +145,7 @@ def generate_embedding(text):
 
 
 # ---------------------------------------------------------------------------
-# MongoDB Vector Search
+# VECTOR SEARCH
 # ---------------------------------------------------------------------------
 def search_articles(collection, query_embedding, max_results=5):
     try:
@@ -112,7 +181,7 @@ def search_articles(collection, query_embedding, max_results=5):
 
 
 # ---------------------------------------------------------------------------
-# Claude Response Generator (NO URL OUTPUT)
+# CLAUDE RESPONSE GENERATOR — SAFE, NO URL OUTPUT
 # ---------------------------------------------------------------------------
 def generate_response(query, articles):
     context_parts = []
@@ -132,7 +201,7 @@ def generate_response(query, articles):
 
     context_block = "\n\n".join(context_parts)
 
-    # Extended Examples (restored)
+    # EXTENDED INTERPRETATION EXAMPLES (Your full version kept)
     edge_case_examples = """
 Extended Interpretation Examples  
 (These examples are NOT rules to copy. They only show *how to think* about similar queries.  
@@ -142,7 +211,7 @@ Use them as guidance, not templates. Never repeat them directly.)
    Example: "Tell me about whales in Iceland"
    → Respond: "The provided articles do not contain enough information to answer that."
 
-2. If query has conflicting intent:
+2. Conflicting intent:
    Example: "Give short detail but long summary"
    → Choose the clearer intent.
 
@@ -153,10 +222,10 @@ Use them as guidance, not templates. Never repeat them directly.)
    → Say: "I can only use information in the provided articles."
 
 5. Timeframe missing:
-   → If no matching article exists, fallback.
+   → Fallback if no matching article.
 
 6. Multiple topics:
-   → Summarize existing ones only.
+   → Summarize existing topics; ignore missing ones.
 
 7. If user requests URLs:
    → Never include URLs.
@@ -168,26 +237,31 @@ Use them as guidance, not templates. Never repeat them directly.)
    → Use fallback.
 
 10. Rankings/comparisons:
-   → Provide neutral summaries only.
+   → Neutral factual summary only.
 
-11. Requests for hidden/full content:
-   → Stick to short summaries only.
+11. Hidden/full content requests:
+   → Keep to 2–3 sentences only.
 """
 
+    # MAIN RESTRICTION BLOCK (RESTORED)
     prompt = f"""
 You are a precise, factual news assistant.
 
 {edge_case_examples}
 
 General Rules:
-- Interpret user intent (topic, timeframe, detail level).
-- Only respond with fallback if NONE of the articles relate.
-- Keep your response short: 2–3 sentences.
-- Do NOT hallucinate or add outside knowledge.
-- Do NOT include URLs in your answer.
-- Answer ONLY using the article context below.
-- If the query has a category but not within fiannce/sports/music/lifestyle, give reply exactly: "The provided articles only cover finance, sports, music, or lifestyle topics." (No other text).
-
+- Interpret user intent clearly (topic + timeframe + detail level).
+- Provide only short answers: 2–3 sentences.
+- Never hallucinate or add outside information.
+- Never include URLs in your answer.
+- Only use information from the article context.
+- If the query asks for a category outside finance, sports, music, or lifestyle,
+  reply EXACTLY:
+  "The provided articles only cover finance, sports, music, or lifestyle topics."
+- If NONE of the articles relate to the query,
+  reply EXACTLY:
+  "The provided articles do not contain enough information to answer that."
+- Do NOT apologize. Do NOT explain fallback decisions.
 
 User Question: {query}
 
@@ -209,18 +283,18 @@ Article Context:
     )
 
     body = json.loads(response["body"].read())
-    model_answer = body["content"][0]["text"].strip()
+    answer = body["content"][0]["text"].strip()
 
     fallback_msg = "The provided articles do not contain enough information to answer that."
 
-    if fallback_msg.lower() in model_answer.lower():
+    if fallback_msg.lower() in answer.lower():
         return fallback_msg
 
-    return model_answer
+    return answer
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# HELPERS
 # ---------------------------------------------------------------------------
 def _response(status, body_dict):
     return {
