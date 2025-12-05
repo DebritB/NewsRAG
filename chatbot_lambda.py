@@ -5,9 +5,7 @@ and more reliable Claude responses.
 """
 import json
 import os
-import re
 import boto3
-from collections import OrderedDict
 from pymongo import MongoClient
 
 # Environment variables
@@ -116,36 +114,75 @@ def search_articles(collection, query_embedding, max_results=5):
     except Exception as e:
         print("Vector Search Error:", e)
         return []
+
+
+# ---------------------------------------------------------------------------
 # Claude Response Generator
 # ---------------------------------------------------------------------------
 def generate_response(query, articles):
-    """Generate a short factual response from Claude using the supplied articles.
-
-    Returns tuple: (answer_text: str, sources_out: list[dict])
     """
-    # Build context and dedup source list
+    Build a safer prompt, generate answer with Claude,
+    and return a single source link.
+    """
+
+    # Build compact summaries
     context_parts = []
-    deduped_sources = OrderedDict()
-    for article in articles:
-        title = article.get('title', 'N/A')
-        source = article.get('source', 'N/A')
-        published = article.get('published_at', 'N/A')
-        summary = article.get('summary') or (article.get('content') or '')[:400]
-        url = article.get('url', '')
+    source_link = None
+
+    for i, article in enumerate(articles):
+        title = article.get("title", "N/A")
+        source = article.get("source", "N/A")
+        published = article.get("published_at", "N/A")
+        summary = article.get("summary") or (article.get("content") or "")[:300]
+        url = article.get("url", "")
+
+        if i == 0 and url:
+            source_link = url  # Use only the first link
+
         context_parts.append(
-            f"Title: {title}\nSource: {source}\nPublished: {published}\nSummary: {summary}\n"
+            f"Title: {title}\n"
+            f"Source: {source}\n"
+            f"Published: {published}\n"
+            f"Summary: {summary}\n"
         )
-        if url and url not in deduped_sources:
-            deduped_sources[url] = title
 
     context_block = "\n\n".join(context_parts)
 
+    # Final prompt for Claude
     prompt = f"""
-You are a concise, factual news assistant. Answer the user's question using ONLY the article context below.
+You are a precise, factual news assistant.
+
+Examples of how to interpret user intent (these are examples only — use them to understand the idea but always interpret the ACTUAL user query):
+
+- Query: "best finance news"
+  Interpretation: summarize the most important or relevant finance-related articles.
+
+- Query: "finance update?"
+  Interpretation: provide a concise summary of the most relevant finance articles.
+
+- Query: "give me detail about economy"
+  Interpretation: expand on the finance/economy-related articles returned.
+
+- Query: "tell me something about football"
+  Interpretation: summarize the most relevant sports-related articles.
+
+- Query: "top news?"
+  Interpretation: choose the most significant articles overall and summarize them.
+
+- Query: "give me full detail about this specific event"
+  Interpretation: use all matching articles to produce a more detailed explanation.
+
+If NONE of the articles contain information relevant to the user’s query, respond:
+"The provided articles do not contain enough information to answer that."
+
 Rules:
-- Keep answers concise (2-3 sentences) unless the user asks for more.
-- Do NOT include a 'Sources:' section or any URLs in the answer; the application will display sources seperately.
-- If none of the articles provide relevant information, reply: "The provided articles do not contain enough information to answer that."
+- First, interpret what the user is really asking (topic, time frame, and intent: summary vs detail).
+- Only respond with "The provided articles do not contain enough information to answer that" if NONE of the articles relate to the user's topic.
+- If no topic/category is specified, assume general news (understand the question).
+- Answer ONLY using the provided article context.
+- Keep your response short: 2–3 sentences.
+- Do NOT invent details not found in the context.
+- Do NOT include URLs inside your summary.
 
 User Question: {query}
 
@@ -153,29 +190,38 @@ Article Context:
 {context_block}
 """
 
-    try:
-        response = bedrock.invoke_model(
-            modelId='anthropic.claude-3-sonnet-20240229-v1:0',
-            body=json.dumps({
-                'anthropic_version': 'bedrock-2023-05-31',
-                'max_tokens': 800,
-                'temperature': 0.3,
-                'system': 'You are a helpful assistant. Do not invent facts or include URLS in the reply',
-                'messages': [{'role': 'user', 'content': prompt}]
-            })
-        )
-    except Exception as e:
-        print('Bedrock error:', e)
-        return 'Sorry, I could not generate a response.', []
+    # Call Claude
+    response = bedrock.invoke_model(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        body=json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 800,
+            "temperature": 0.3,
+            "system": (
+                "You must answer only using the provided article context. "
+                "Do not speculate, do not hallucinate, and do not add outside knowledge."
+            ),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": prompt}]
+                }
+            ]
+        })
+    )
 
-    body = json.loads(response['body'].read())
-    model_answer = body['content'][0]['text'].strip()
-    # Remove any 'Sources:' or 'Click here' instances if the model inserted them
-    model_answer = re.sub(r'(?is)\bSources?:.*$', '', model_answer).strip()
-    model_answer = re.sub(r'\[?click here\]?|https?://\S+', '', model_answer, flags=re.IGNORECASE).strip()
+    body = json.loads(response["body"].read())
+    model_answer = body["content"][0]["text"].strip()
 
-    sources_out = [{'title': title, 'url': url} for url, title in deduped_sources.items()]
-    return model_answer, sources_out
+    model_answer = model_answer.replace("Sources:", "").strip()
+
+    # Append source link manually
+    if source_link:
+        model_answer += f"\n\nSources:\n[Click here]({source_link})"
+    else:
+        model_answer += "\n\nSources:\nNo sources available"
+
+    return model_answer, source_link
 
 
 
