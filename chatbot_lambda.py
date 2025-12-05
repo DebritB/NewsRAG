@@ -227,7 +227,7 @@ Article Context:
 
     model_answer = model_answer.replace("Sources:", "").strip()
 
-    FALLBACK_PATTERN = r"(?i)the provided articles?\s+do not contain enough information"
+    FALLBACK_PATTERN = r"(?i)the provided article?\s+do not contain enough information"
 
     if re.search(FALLBACK_PATTERN, model_answer):
         return "The provided articles do not contain enough information to answer that.", None
