@@ -87,7 +87,7 @@ When you open NewsRAG, you’ll see a clean dashboard designed for easy news exp
 
 ## Progress & History
 
-For a detailed progress report and history of changes, see `CHANGELOG.txt` in the project root. This file documents major updates, bug fixes, and troubleshooting steps throughout development.
+For a detailed progress report and history of changes, see `Progress_summary.txt` in the project root. This file documents major updates, bug fixes, and troubleshooting steps throughout development.
 
 ---
 
