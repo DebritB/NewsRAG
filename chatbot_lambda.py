@@ -227,14 +227,14 @@ Article Context:
 
     model_answer = model_answer.replace("Sources:", "").strip()
 
-    FALLBACK_PATTERN = r"(?i)the provided article?\s+do not contain enough information"
+    FALLBACK_PATTERN = r"(?i)the provided articles?\s+do not contain enough(?:\s+\w+)?\s+information"
+
 
     if re.search(FALLBACK_PATTERN, model_answer):
-        source_link = None
         return "The provided articles do not contain enough information to answer that.", None
-    
+
     if source_link:
-        model_answer += f"\n\nSources:\n[Click here]({source_link})"        
+        model_answer += f"\n\nSources:\n[Click here]({source_link})"
     else:
         model_answer += "\n\nSources:\nNo sources available"
 
