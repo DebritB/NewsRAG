@@ -1,6 +1,9 @@
 # NewsRAG – AI-Powered News Aggregator and Chatbot
 
-NewsRAG aggregates news from multiple sources, organizes and categorizes them, and enables semantic search or conversational queries using a retrieval-augmented generation (RAG) approach. It serves as a unified news reader + AI summarizer + chatbot for a curated feed of news.
+NewsRAG aggregates news from multiple sources and organizes them into a categorized feed. It provides semantic search, automated AI summarization, and a conversational chatbot powered by a retrieval-augmented generation (RAG) approach. To keep the feed fresh and storage small, NewsRAG keeps articles for the last 24 hours only. It serves as a unified news reader + AI summarizer + chatbot for a curated feed of news. 
+# NewsRAG – AI-Powered News Aggregator and Chatbot
+
+NewsRAG aggregates news from multiple sources, organizes and categorizes them, and enables semantic search or conversational queries using a retrieval-augmented generation (RAG) approach. It serves as a unified news reader + AI summarizer + chatbot for a curated feed of news. NewsRAG will keep news of the last 24 hours.
 
 ---
 
