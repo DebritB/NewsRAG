@@ -268,7 +268,7 @@ Article Context:
         body=json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 900,
-            "temperature": 0.7,
+            "temperature": 0.3,
             "system": "Answer ONLY using article context.",
             "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
         })
