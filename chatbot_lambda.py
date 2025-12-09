@@ -236,7 +236,8 @@ Extended Interpretation Examples
 8. Emotion analysis → forbidden.
 9. Non-news queries → fallback.
 10. Comparisons → neutral factual summary only.
-11. Hidden/full-content request → keep 2–3 sentences.
+11. Hidden/full-content request → keep 2–3 sentences.'
+12. 
 """
 
     prompt = f"""
@@ -248,14 +249,13 @@ General Rules:
 - Interpret user intent clearly.
 - Keep responses short (2–3 sentences).
 - Never hallucinate or add outside information.
-- Never include URLs.
+- Include URLs.
 - Use ONLY the provided article context.
 {cat_instruction}- If the query relates to a category outside finance, sports, music, or lifestyle:
   reply EXACTLY: "The provided articles only cover finance, sports, music, or lifestyle topics."
 - If NONE of the articles relate to the query:
   reply EXACTLY: "The provided articles do not contain enough information to answer that."
 - Do NOT apologize.
-- If you're producing any answer such as "The provided articles cover a range of news topics including" just reply EXACTLY: "The provided articles cover a range of news topics including finance, sports, music, and lifestyle."
 
 User Question: {query}
 
@@ -268,7 +268,7 @@ Article Context:
         body=json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 900,
-            "temperature": 0.3,
+            "temperature": 0.7,
             "system": "Answer ONLY using article context.",
             "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
         })
