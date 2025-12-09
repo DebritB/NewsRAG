@@ -255,6 +255,7 @@ General Rules:
 - If NONE of the articles relate to the query:
   reply EXACTLY: "The provided articles do not contain enough information to answer that."
 - Do NOT apologize.
+- If you're producing any answer such as "The provided articles cover a range of news topics including" just reply EXACTLY: "The provided articles cover a range of news topics including finance, sports, music, and lifestyle."
 
 User Question: {query}
 
