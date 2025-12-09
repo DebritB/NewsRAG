@@ -20,7 +20,7 @@ from pymongo import MongoClient
 MONGODB_URI = os.environ.get("MONGODB_URI")
 MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "news_rag")
 MONGODB_COLLECTION = os.environ.get("MONGODB_COLLECTION", "articles")
-MIN_VECTOR_SEARCH_SCORE = float(os.environ.get("MIN_VECTOR_SEARCH_SCORE", "0.0"))
+MIN_VECTOR_SEARCH_SCORE = float(os.environ.get("MIN_VECTOR_SEARCH_SCORE", "0.5"))
 ALLOW_SOFT_FALLBACK = os.environ.get("ALLOW_SOFT_FALLBACK", "true").lower() in ("1", "true", "yes")
 
 bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
@@ -162,7 +162,7 @@ def generate_embedding(text):
 # ---------------------------------------------------------------------------
 # VECTOR SEARCH
 # ---------------------------------------------------------------------------
-def search_articles(collection, embedding, max_results=5, min_score=0.0):
+def search_articles(collection, embedding, max_results=5, min_score=0.5):
     try:
         pipeline = [
             {
