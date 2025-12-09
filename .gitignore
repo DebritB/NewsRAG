@@ -55,6 +55,6 @@ packaged-template.yaml
 # Ignore local test run JSON output
 tests/extract/rss_output*.json
 
-# Ignore all markdown files except README and important docs we track
+# Ignore all markdown files except README
 COST_ANALYSIS.md
 VERIFIED_SOURCES.md
