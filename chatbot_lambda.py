@@ -252,11 +252,16 @@ General Rules:
 - DO NOT include URLs.
 - Use ONLY the provided article context.
 {cat_instruction}- If the query relates to a category outside finance, sports, music, or lifestyle:
-  reply EXACTLY: "The provided articles only cover finance, sports, music, or lifestyle topics."
+    reply EXACTLY: "The provided articles only cover finance, sports, music, or lifestyle topics."
 - If NONE of the articles relate to the query:
   reply EXACTLY: "The provided articles do not contain enough information to answer that."
-- Do NOT apologize.
-
+- For answer structures:
+  "Here are the top news highlights from the provided articles:
+  .
+  .
+  .
+  The provided articles cover ... "
+  DO NOT add the last sentence, e.g. "The provided articles cover ... ", just the . 
 User Question: {query}
 
 Article Context:
