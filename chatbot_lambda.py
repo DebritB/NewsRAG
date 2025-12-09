@@ -20,6 +20,8 @@ from pymongo import MongoClient
 MONGODB_URI = os.environ.get("MONGODB_URI")
 MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "news_rag")
 MONGODB_COLLECTION = os.environ.get("MONGODB_COLLECTION", "articles")
+MIN_VECTOR_SEARCH_SCORE = float(os.environ.get("MIN_VECTOR_SEARCH_SCORE", "0.0"))
+ALLOW_SOFT_FALLBACK = os.environ.get("ALLOW_SOFT_FALLBACK", "true").lower() in ("1", "true", "yes")
 
 bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
 
@@ -122,7 +124,8 @@ def lambda_handler(event, context):
         collection = client[MONGODB_DATABASE][MONGODB_COLLECTION]
 
         embed = generate_embedding(query)
-        articles = search_articles(collection, embed, max_results)
+        articles = search_articles(collection, embed, max_results, min_score=MIN_VECTOR_SEARCH_SCORE)
+        print(f"Search returned {len(articles)} articles (min_score={MIN_VECTOR_SEARCH_SCORE})")
 
         if not articles:
             return _response(200, {
@@ -159,7 +162,7 @@ def generate_embedding(text):
 # ---------------------------------------------------------------------------
 # VECTOR SEARCH
 # ---------------------------------------------------------------------------
-def search_articles(collection, embedding, max_results=5):
+def search_articles(collection, embedding, max_results=5, min_score=0.0):
     try:
         pipeline = [
             {
@@ -184,7 +187,12 @@ def search_articles(collection, embedding, max_results=5):
                 }
             }
         ]
-        return list(collection.aggregate(pipeline))
+        results = list(collection.aggregate(pipeline))
+        # filter out low similarity candidates (optional)
+        if min_score and min_score > 0:
+            filtered = [r for r in results if float(r.get("score", 0)) >= float(min_score)]
+            return filtered
+        return results
     except:
         return []
 
@@ -269,8 +277,15 @@ Article Context:
 
     fallback = "The provided articles do not contain enough information to answer that."
 
-    # Hard fallback enforcement
-    if fallback.lower() in answer.lower():
+    # Soft fallback enforcement: only return the fallback if the model responded
+    # with the exact fallback string (we still detect it case-insensitive),
+    # otherwise prefer the model's answer. This reduces cases where the phrase
+    # appears in the LLM text but useful content was still provided.
+    if answer.strip().lower() == fallback.lower():
+        return fallback
+
+    # If not allowed to be soft and fallback text appears anywhere, enforce it.
+    if (not ALLOW_SOFT_FALLBACK) and (fallback.lower() in answer.lower()):
         return fallback
 
     return answer
