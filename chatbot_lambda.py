@@ -261,7 +261,7 @@ General Rules:
   .
   .
   The provided articles cover ... "
-  DO NOT add the last sentence, e.g. "The provided articles cover ... ", just the . 
+  DO NOT add the last sentence, e.g. "The provided articles cover ... ", but keep the bullets. 
 User Question: {query}
 
 Article Context:
