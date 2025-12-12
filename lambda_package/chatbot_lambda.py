@@ -14,7 +14,7 @@ from pymongo import MongoClient
 # LangChain imports (your requested version)
 from langchain.chat_models import Bedrock as LangchainBedrock
 from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 
 
 # ---------------------------------------------------------------------
