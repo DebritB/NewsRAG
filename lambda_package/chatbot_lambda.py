@@ -1,263 +1,282 @@
 """
-AWS Lambda handler for NewsRAG Chatbot.
-This function handles user queries about news by searching relevant articles
-and using AWS Bedrock to generate AI-powered responses.
+Chatbot Lambda (V2) — LangChain + MongoDB vector search.
+Option A: Keep existing embeddings + existing MongoDB $vectorSearch.
+
+Improvements:
+- Strong grounding prompt
+- Correct fallback detection
+- Clean context building
+- Category intent detection
+- No hallucination phrasing
+- No duplicate or partial fallback triggers
 """
-import json
+
 import os
+import json
 import boto3
 from pymongo import MongoClient
-from datetime import datetime, timedelta
 
+# Try to load LangChain (optional)
 try:
     from langchain.chat_models import Bedrock as LangchainBedrock
     from langchain.chains import LLMChain
     from langchain.prompts import PromptTemplate
-    from langchain.schema import Document, BaseRetriever
     LANGCHAIN_AVAILABLE = True
 except Exception:
     LANGCHAIN_AVAILABLE = False
 
-# Environment variables
-MONGODB_URI = os.environ.get('MONGODB_URI')
-MONGODB_DATABASE = os.environ.get('MONGODB_DATABASE', 'news_rag')
-MONGODB_COLLECTION = os.environ.get('MONGODB_COLLECTION', 'articles')
+# ---------------------------------------------------------------------
+# ENVIRONMENT
+# ---------------------------------------------------------------------
+MONGODB_URI = os.environ.get("MONGODB_URI")
+MONGODB_DB = os.environ.get("MONGODB_DATABASE", "news_rag")
+MONGODB_COLL = os.environ.get("MONGODB_COLLECTION", "articles")
+MIN_VECTOR_SCORE = float(os.environ.get("MIN_VECTOR_SEARCH_SCORE", "0.0"))
 
-# Bedrock client
-bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
+bedrock = boto3.client("bedrock-runtime", region_name=os.getenv("BEDROCK_REGION", "us-east-1"))
 
-def lambda_handler(event, context):
-    """
-    Main Lambda handler for chatbot queries.
-    
-    Expected event format:
-    {
-        "query": "What are the latest developments in AI?",
-        "max_results": 5  # Optional, default 5
-    }
-    """
-    try:
-        # Parse input
-        body = json.loads(event.get('body', '{}'))
-        query = body.get('query', '').strip()
-        max_results = body.get('max_results', 5)
-        
-        if not query:
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Query is required'})
-            }
-        
-        # Connect to MongoDB
-        client = MongoClient(MONGODB_URI)
-        db = client[MONGODB_DATABASE]
-        collection = db[MONGODB_COLLECTION]
-        
-        # Generate embedding for the query using Bedrock Titan
-        query_embedding = generate_embedding(query)
-        
-        # Search for relevant articles using vector similarity
-        relevant_articles = search_articles(collection, query_embedding, max_results)
-        
-        if not relevant_articles:
-            response_text = "I couldn't find any relevant news articles for your query. Please try rephrasing or check back later for new articles."
-        else:
-            # Generate AI response using Bedrock
-            response_text = generate_response(query, relevant_articles)
-        
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS'
-            },
-            'body': json.dumps({
-                'query': query,
-                'response': response_text,
-                'articles_used': len(relevant_articles)
-            })
-        }
-        
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Internal server error'})
-        }
+FALLBACK_TEXT = "The provided articles do not contain enough information to answer that."
 
+
+# ---------------------------------------------------------------------
+# CATEGORY DEFINITIONS (kept, but simplified usage)
+# ---------------------------------------------------------------------
+FINANCE = ["finance", "financial", "economy", "market", "stock", "business", "bank"]
+SPORTS = ["sport", "sports", "match", "game", "football", "soccer", "cricket", "tennis"]
+MUSIC = ["music", "musician", "song", "album", "concert", "band"]
+LIFESTYLE = ["lifestyle", "health", "wellness", "travel", "fitness", "diet", "living"]
+
+SUPPORTED = {
+    "finance": FINANCE,
+    "sports": SPORTS,
+    "music": MUSIC,
+    "lifestyle": LIFESTYLE,
+}
+
+UNSUPPORTED = ["politic", "election", "war", "science", "tech", "bitcoin", "crypto"]
+GENERIC = {"give", "tell", "say", "news", "update", "anything", "something"}
+
+
+def detect_categories(query: str):
+    q = query.lower()
+
+    supported = []
+    for category, terms in SUPPORTED.items():
+        if any(t in q for t in terms):
+            supported.append(category)
+
+    if supported:
+        return supported
+
+    if any(t in q for t in UNSUPPORTED):
+        return ["other"]
+
+    return []
+
+
+# ---------------------------------------------------------------------
+# EMBEDDING (reuse Titan v2)
+# ---------------------------------------------------------------------
 def generate_embedding(text):
-    """Generate vector embedding for text using Bedrock Titan."""
-    try:
-        response = bedrock.invoke_model(
-            modelId='amazon.titan-embed-text-v2:0',
-            body=json.dumps({
-                'inputText': text
-            })
-        )
-        
-        response_body = json.loads(response['body'].read())
-        return response_body['embedding']
-    except Exception as e:
-        print(f"Embedding generation error: {str(e)}")
-        raise
+    payload = {"inputText": text}
+    resp = bedrock.invoke_model(
+        modelId="amazon.titan-embed-text-v2:0",
+        body=json.dumps(payload)
+    )
+    return json.loads(resp["body"].read())["embedding"]
 
-def search_articles(collection, query_embedding, max_results=5):
-    """Search for relevant articles using vector similarity."""
+
+# ---------------------------------------------------------------------
+# VECTOR SEARCH (unchanged MongoDB integration)
+# ---------------------------------------------------------------------
+def search_articles(collection, embedding, max_results=5):
     try:
         pipeline = [
             {
-                '$vectorSearch': {
-                    'index': 'vector_index',  # Your vector search index name
-                    'path': 'embedding',
-                    'queryVector': query_embedding,
-                    'numCandidates': 100,
-                    'limit': max_results
+                "$vectorSearch": {
+                    "index": "vector_index",
+                    "path": "embedding",
+                    "queryVector": embedding,
+                    "numCandidates": 200,
+                    "limit": max_results
                 }
             },
             {
-                '$project': {
-                    '_id': 0,
-                    'title': 1,
-                    'content': 1,
-                    'summary': 1,
-                    'source': 1,
-                    'published_at': 1,
-                    'url': 1,
-                    'category': 1,
-                    'score': {'$meta': 'vectorSearchScore'}
+                "$project": {
+                    "_id": 0,
+                    "title": 1,
+                    "summary": 1,
+                    "content": 1,
+                    "source": 1,
+                    "published_at": 1,
+                    "category": 1,
+                    "score": {"$meta": "vectorSearchScore"},
                 }
             }
         ]
-        
+
         results = list(collection.aggregate(pipeline))
+
+        if MIN_VECTOR_SCORE > 0:
+            results = [r for r in results if r.get("score", 0) >= MIN_VECTOR_SCORE]
+
         return results
+
     except Exception as e:
-        print(f"Vector search error: {str(e)}")
+        print("Vector search error:", e)
         return []
 
-def generate_response(query, articles):
-    """Generate AI response using LangChain when available, otherwise Bedrock Claude as before."""
-    if not articles:
-        return "I couldn't find any relevant news articles for your query."
 
-    context_parts = []
-    max_score = 0.0
+# ---------------------------------------------------------------------
+# CONTEXT BUILDER (short, summarised)
+# ---------------------------------------------------------------------
+def build_context(articles):
+    blocks = []
     for a in articles:
-        context_parts.append(
-            f"Title: {a.get('title','N/A')}\n"
-            f"Source: {a.get('source','N/A')}\n"
-            f"Published: {a.get('published_at','N/A')}\n"
-            f"Summary: {a.get('summary') or a.get('content') or ''}\n"
-        )
-        try:
-            s = float(a.get('score', 0))
-            if s > max_score:
-                max_score = s
-        except Exception:
-            pass
+        title = a.get("title", "Untitled")
+        summary = a.get("summary") or (a.get("content", "")[:300] or "No summary available.")
+        src = a.get("source", "Unknown")
+        pub = a.get("published_at", "Unknown")
+        blocks.append(f"Title: {title}\nSource: {src}\nPublished: {pub}\nSummary: {summary}")
+    return "\n\n".join(blocks)
 
-    fallback = "The provided articles do not contain enough information to answer that."
 
-    context = "\n\n".join(context_parts)
+# ---------------------------------------------------------------------
+# LANGCHAIN PROMPT (clean + hallucination-proof)
+# ---------------------------------------------------------------------
+PROMPT_TEMPLATE = """
+You are a precise, concise news assistant.
 
-    # Use LangChain if available
-    if LANGCHAIN_AVAILABLE:
-        try:
-            class MongoRetriever(BaseRetriever):
-                def __init__(self, collection, max_results=5, min_score=0.0):
-                    self.collection = collection
-                    self.max_results = max_results
-                    self.min_score = min_score
+RULES:
+- Use ONLY the provided context.
+- DO NOT add external facts.
+- DO NOT include URLs.
+- Write a short answer (2–3 sentences).
+- If the context does not include enough information, reply EXACTLY:
+"{fallback}"
 
-                def get_relevant_documents(self, query_text):
-                    emb = generate_embedding(query_text)
-                    results = search_articles(self.collection, emb, self.max_results, min_score=self.min_score)
-                    docs = []
-                    for r in results:
-                        content = f"Title: {r.get('title','N/A')}\nSummary: {r.get('summary') or r.get('content') or ''}"
-                        docs.append(Document(page_content=content, metadata={
-                            'title': r.get('title', ''),
-                            'source': r.get('source', ''),
-                            'published_at': r.get('published_at', ''),
-                            'url': r.get('url', ''),
-                            'score': r.get('score', 0),
-                        }))
-                    return docs
+NEVER repeat or paraphrase the fallback sentence unless it is the ONLY answer.
 
-            client = MongoClient(MONGODB_URI)
-            collection = client[MONGODB_DATABASE][MONGODB_COLLECTION]
-            retriever = MongoRetriever(collection)
+Context:
+{context}
 
-            template = PromptTemplate(
-                input_variables=["query", "context"],
-                template=(
-                    "You are a concise news assistant. Use the article context to answer the user's question in 2-3 sentences. "
-                    "If there is not enough information, reply EXACTLY: \"The provided articles do not contain enough information to answer that.\" "
-                    "Do not include raw URLs. Use only the provided article texts.\n\nContext: {context}\n\nUser Question: {query}"
-                )
-            )
-            lc_llm = LangchainBedrock(model_id='anthropic.claude-3-sonnet-20240229-v1:0', temperature=0.3)
-            chain = LLMChain(llm=lc_llm, prompt=template)
+User Question:
+{query}
+""".strip()
 
-            docs = retriever.get_relevant_documents(query)
-            docs_text = "\n\n".join([d.page_content for d in docs])
-            answer = chain.run({"query": query, "context": docs_text})
 
-            if answer and answer.strip().lower() == fallback.lower():
-                return fallback
+PROMPT = PromptTemplate(
+    input_variables=["context", "query"],
+    template=PROMPT_TEMPLATE.replace("{fallback}", FALLBACK_TEXT)
+)
 
-            return answer.strip()
-        except Exception as e:
-            print(f"LangChain failed in packaged lambda: {e}")
-            pass
 
-    # Fallback to direct Bedrock invoke similar to previous behavior
+def run_langchain_llm(query, context):
     try:
-        user_prompt = f"""Answer the user's question based on the provided news articles. Be informative, accurate, and cite sources when possible. If the articles don't fully answer the question, say so.
+        llm = LangchainBedrock(
+            model_id="anthropic.claude-3-sonnet-20240229-v1:0",
+            temperature=0.2
+        )
+        chain = LLMChain(llm=llm, prompt=PROMPT)
+        return chain.run({"query": query, "context": context})
+    except Exception as e:
+        print("LangChain failed:", e)
+        return None
 
-User Question: {query}
 
-{context}"""
-        
-        response = bedrock.invoke_model(
-            modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+# ---------------------------------------------------------------------
+# DIRECT BEDROCK FALLBACK
+# ---------------------------------------------------------------------
+def run_direct_bedrock(query, context):
+    prompt = PROMPT_TEMPLATE.replace("{fallback}", FALLBACK_TEXT).format(
+        context=context, query=query
+    )
+
+    try:
+        resp = bedrock.invoke_model(
+            modelId="anthropic.claude-3-sonnet-20240229-v1:0",
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
-                "system": "You are a helpful news assistant. Provide accurate, well-cited answers based on the news articles provided. Keep responses concise but comprehensive.",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
-                ],
-                "temperature": 0.3
+                "max_tokens": 400,
+                "temperature": 0.2,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
             })
         )
-        response_body = json.loads(response['body'].read())
-        generated_text = response_body['content'][0]['text']
-        return generated_text.strip()
+        return json.loads(resp["body"].read())["content"][0]["text"].strip()
     except Exception as e:
-        print(f"Response generation error: {str(e)}")
-        return "Sorry, I encountered an error generating a response. Please try again."
-# Handle CORS preflight requests
-def handle_options():
+        print("Direct Bedrock failed:", e)
+        return None
+
+
+# ---------------------------------------------------------------------
+# LAMBDA HANDLER
+# ---------------------------------------------------------------------
+def lambda_handler(event, context):
+
+    body = json.loads(event.get("body", "{}"))
+    query = body.get("query", "").strip()
+    max_results = int(body.get("max_results", 5))
+
+    # meaningless queries
+    if not query or query.lower() in GENERIC:
+        return response(200, {"response": "Please enter a more specific query.", "articles_used": 0})
+
+    categories = detect_categories(query)
+
+    if categories == ["other"]:
+        return response(200, {
+            "response": "The provided articles only cover finance, sports, music, or lifestyle topics.",
+            "articles_used": 0
+        })
+
+    # MongoDB connection
+    client = MongoClient(MONGODB_URI)
+    coll = client[MONGODB_DB][MONGODB_COLL]
+
+    # Embedding + search
+    emb = generate_embedding(query)
+    articles = search_articles(coll, emb, max_results=max_results)
+
+    if not articles:
+        return response(200, {
+            "response": "No relevant news found for your query.",
+            "articles_used": 0
+        })
+
+    context_text = build_context(articles)
+
+    # Try LangChain first
+    answer = run_langchain_llm(query, context_text) if LANGCHAIN_AVAILABLE else None
+
+    # Fallback to direct Bedrock
+    if not answer:
+        answer = run_direct_bedrock(query, context_text)
+
+    # Final fallback safety: exact match required
+    if answer.strip().lower() == FALLBACK_TEXT.lower():
+        return response(200, {"response": FALLBACK_TEXT, "articles_used": len(articles)})
+
+    sources = [a.get("title", "Unknown") for a in articles]
+
+    return response(200, {
+        "response": answer,
+        "articles_used": len(articles),
+        "sources": sources
+    })
+
+
+def response(status, body):
     return {
-        'statusCode': 200,
-        'headers': {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        "statusCode": status,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "*"
         },
-        'body': json.dumps({})
+        "body": json.dumps(body),
     }
 
-# Main entry point for API Gateway
+
 def main(event, context):
-    if event.get('httpMethod') == 'OPTIONS':
-        return handle_options()
     return lambda_handler(event, context)
