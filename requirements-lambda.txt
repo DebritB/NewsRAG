@@ -10,3 +10,4 @@ pymongo>=4.0.0
 dnspython
 boto3
 langchain
+langchain-aws
