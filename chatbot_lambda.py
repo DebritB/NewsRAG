@@ -184,7 +184,6 @@ def lambda_handler(event, context):
     llm = init_chat_model(
         "bedrock:anthropic.claude-3-sonnet-20240229-v1:0",
         temperature=0.3,
-        aws_region="us-east-1"
     )
 
     chain = prompt | llm
