@@ -12,7 +12,7 @@ import boto3
 from pymongo import MongoClient
 
 # LangChain imports (your requested version)
-from langchain.chat_models import Bedrock as LangchainBedrock
+from langchain.chat_models import init_chat_model
 from langchain.chains import LLMChain
 from langchain_core.prompts import PromptTemplate
 
@@ -197,10 +197,10 @@ def lambda_handler(event, context):
     context_text = build_context(articles)
 
     # LangChain Bedrock LLM
-    llm = LangchainBedrock(
-        model_id="anthropic.claude-3-sonnet-20240229-v1:0",
-        client=bedrock,
-        model_kwargs={"temperature": 0.2, "max_tokens": 400}
+    llm = init_chat_model(
+        "bedrock:anthropic.claude-3-sonnet-20240229-v1:0",
+        temperature=0.3,
+        region="us-east-1",
     )
 
     chain = LLMChain(prompt=PROMPT, llm=llm)
