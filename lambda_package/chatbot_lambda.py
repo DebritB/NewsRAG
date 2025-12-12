@@ -9,6 +9,15 @@ import boto3
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 
+try:
+    from langchain.chat_models import Bedrock as LangchainBedrock
+    from langchain.chains import LLMChain
+    from langchain.prompts import PromptTemplate
+    from langchain.schema import Document, BaseRetriever
+    LANGCHAIN_AVAILABLE = True
+except Exception:
+    LANGCHAIN_AVAILABLE = False
+
 # Environment variables
 MONGODB_URI = os.environ.get('MONGODB_URI')
 MONGODB_DATABASE = os.environ.get('MONGODB_DATABASE', 'news_rag')
@@ -131,27 +140,89 @@ def search_articles(collection, query_embedding, max_results=5):
         return []
 
 def generate_response(query, articles):
-    """Generate AI response using Claude 3 Sonnet based on relevant articles."""
+    """Generate AI response using LangChain when available, otherwise Bedrock Claude as before."""
+    if not articles:
+        return "I couldn't find any relevant news articles for your query."
+
+    context_parts = []
+    max_score = 0.0
+    for a in articles:
+        context_parts.append(
+            f"Title: {a.get('title','N/A')}\n"
+            f"Source: {a.get('source','N/A')}\n"
+            f"Published: {a.get('published_at','N/A')}\n"
+            f"Summary: {a.get('summary') or a.get('content') or ''}\n"
+        )
+        try:
+            s = float(a.get('score', 0))
+            if s > max_score:
+                max_score = s
+        except Exception:
+            pass
+
+    fallback = "The provided articles do not contain enough information to answer that."
+
+    context = "\n\n".join(context_parts)
+
+    # Use LangChain if available
+    if LANGCHAIN_AVAILABLE:
+        try:
+            class MongoRetriever(BaseRetriever):
+                def __init__(self, collection, max_results=5, min_score=0.0):
+                    self.collection = collection
+                    self.max_results = max_results
+                    self.min_score = min_score
+
+                def get_relevant_documents(self, query_text):
+                    emb = generate_embedding(query_text)
+                    results = search_articles(self.collection, emb, self.max_results, min_score=self.min_score)
+                    docs = []
+                    for r in results:
+                        content = f"Title: {r.get('title','N/A')}\nSummary: {r.get('summary') or r.get('content') or ''}"
+                        docs.append(Document(page_content=content, metadata={
+                            'title': r.get('title', ''),
+                            'source': r.get('source', ''),
+                            'published_at': r.get('published_at', ''),
+                            'url': r.get('url', ''),
+                            'score': r.get('score', 0),
+                        }))
+                    return docs
+
+            client = MongoClient(MONGODB_URI)
+            collection = client[MONGODB_DATABASE][MONGODB_COLLECTION]
+            retriever = MongoRetriever(collection)
+
+            template = PromptTemplate(
+                input_variables=["query", "context"],
+                template=(
+                    "You are a concise news assistant. Use the article context to answer the user's question in 2-3 sentences. "
+                    "If there is not enough information, reply EXACTLY: \"The provided articles do not contain enough information to answer that.\" "
+                    "Do not include raw URLs. Use only the provided article texts.\n\nContext: {context}\n\nUser Question: {query}"
+                )
+            )
+            lc_llm = LangchainBedrock(model_id='anthropic.claude-3-sonnet-20240229-v1:0', temperature=0.3)
+            chain = LLMChain(llm=lc_llm, prompt=template)
+
+            docs = retriever.get_relevant_documents(query)
+            docs_text = "\n\n".join([d.page_content for d in docs])
+            answer = chain.run({"query": query, "context": docs_text})
+
+            if answer and answer.strip().lower() == fallback.lower():
+                return fallback
+
+            return answer.strip()
+        except Exception as e:
+            print(f"LangChain failed in packaged lambda: {e}")
+            pass
+
+    # Fallback to direct Bedrock invoke similar to previous behavior
     try:
-        # Prepare context from articles
-        context = "Based on the following recent news articles:\n\n"
-        
-        for i, article in enumerate(articles, 1):
-            context += f"Article {i}:\n"
-            context += f"Title: {article.get('title', 'N/A')}\n"
-            context += f"Source: {article.get('source', 'N/A')}\n"
-            context += f"Category: {article.get('category', 'N/A')}\n"
-            context += f"Summary: {article.get('summary', article.get('content', 'N/A')[:500])}\n"
-            context += f"Published: {article.get('published_at', 'N/A')}\n\n"
-        
-        # Create prompt for Claude
         user_prompt = f"""Answer the user's question based on the provided news articles. Be informative, accurate, and cite sources when possible. If the articles don't fully answer the question, say so.
 
 User Question: {query}
 
 {context}"""
         
-        # Invoke Claude 3 Sonnet
         response = bedrock.invoke_model(
             modelId='anthropic.claude-3-sonnet-20240229-v1:0',
             body=json.dumps({
@@ -167,16 +238,12 @@ User Question: {query}
                 "temperature": 0.3
             })
         )
-        
         response_body = json.loads(response['body'].read())
         generated_text = response_body['content'][0]['text']
-        
         return generated_text.strip()
-        
     except Exception as e:
         print(f"Response generation error: {str(e)}")
         return "Sorry, I encountered an error generating a response. Please try again."
-
 # Handle CORS preflight requests
 def handle_options():
     return {

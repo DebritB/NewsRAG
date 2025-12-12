@@ -1,6 +1,7 @@
 # NewsRAG – AI-Powered News Aggregator and Chatbot
 
-NewsRAG aggregates news from multiple sources and organizes them into a categorized feed. It provides semantic search, automated AI summarization, and a conversational chatbot powered by a retrieval-augmented generation (RAG) approach. To keep the feed fresh and storage small, NewsRAG keeps articles for the last 24 hours only. It serves as a unified news reader + AI summarizer + chatbot for a curated feed of news. 
+NewsRAG aggregates news from multiple sources and organizes them into a categorized feed. It provides semantic search, automated AI summarization, and a conversational chatbot powered by a retrieval-augmented generation (RAG) approach. To keep the feed fresh and storage small, NewsRAG keeps articles for the last 24 hours only.
+It serves as a unified news reader + AI summarizer + chatbot for a curated feed of news. NewsRAG will keep news of the last 24 hours.
 # NewsRAG – AI-Powered News Aggregator and Chatbot
 
 NewsRAG aggregates news from multiple sources, organizes and categorizes them, and enables semantic search or conversational queries using a retrieval-augmented generation (RAG) approach. It serves as a unified news reader + AI summarizer + chatbot for a curated feed of news. NewsRAG will keep news of the last 24 hours.
@@ -31,11 +32,7 @@ When you open NewsRAG, you’ll see a clean dashboard designed for easy news exp
 		- Type your question in the box at the bottom and press Enter.
 		- The AI assistant will reply with answers based on the most recent news.
 		- Previous chat messages are shown above, so you can follow the conversation.
-
-### News View
-
-- Use the tabs at the top to switch between categories.
-- Breaking news is highlighted first.
+	- Note: App v2: The Chatbot Lambda (App v2) optionally uses LangChain for LLM orchestration; if LangChain is not available, it falls back to direct Bedrock invocation for compatibility.
 - Click on headlines to see more details about each story.
 
 ### Atlas Dashboard View
@@ -221,6 +218,7 @@ This project is licensed under the [MIT License](LICENSE).
 - **MongoDB Atlas Vector Search:** Stores articles and enables fast similarity search.
 - **Streamlit Dashboard:** Visualizes news, trends, and provides a chatbot interface.
 - **RAG Chatbot:** Ask questions about the latest news using a Bedrock-powered LLM.
+- **LangChain Orchestration (App v2):** Optional LangChain integration for improved prompt chaining and orchestration; falls back to direct Bedrock if LangChain is not installed.
 - **Serverless & Automated:** Fully managed via AWS Lambda, Step Functions, and GitHub Actions.
 
 ---
