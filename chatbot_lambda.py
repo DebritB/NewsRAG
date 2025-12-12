@@ -187,15 +187,22 @@ def lambda_handler(event, context):
     )
 
     chain = prompt | llm
-    answer = chain.invoke({"query": query, "context": context_text})
+    # Run LangChain chain
+    answer_msg = chain.invoke({"query": query, "context": context_text})
 
-    if answer.strip().lower() == FALLBACK_TEXT.lower():
+    # Extract text from AIMessage
+    answer_text = answer_msg.content if hasattr(answer_msg, "content") else str(answer_msg)
+
+    # strict fallback check
+    if answer_text.strip().lower() == FALLBACK_TEXT.lower():
         return response(200, {"response": FALLBACK_TEXT, "articles_used": len(articles)})
 
+    sources = [a.get("title", "Unknown") for a in articles]
+
     return response(200, {
-        "response": answer,
+        "response": answer_text,
         "articles_used": len(articles),
-        "sources": [a.get("title", "Unknown") for a in articles]
+        "sources": sources
     })
 
 
