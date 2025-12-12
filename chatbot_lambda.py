@@ -54,7 +54,8 @@ def detect_categories(query: str):
     if found:
         return found
 
-    if any(t in q for t in UNSUPPORTED):
+    tokens = q.split()
+    if any(t in tokens for t in terms):
         return ["other"]
 
     return []
@@ -132,7 +133,8 @@ Rules:
 - NEVER add outside info.
 - Keep answers 2–3 sentences.
 - Do NOT include URLs.
-- If the context lacks enough info, reply EXACTLY:
+- If the context includes some information, summarize ONLY what is present.
+- If the context is completely unrelated or empty, reply EXACTLY:
 "{fallback}"
 
 Context:
