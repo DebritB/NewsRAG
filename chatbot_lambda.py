@@ -125,12 +125,19 @@ Question:
 {query}
 """.strip()
 
-PROMPT = PromptTemplate(input_variables=["context", "query"], template=LC_PROMPT_TEMPLATE.replace("{fallback}", FALLBACK_SENTENCE))
+PROMPT = None
+if LANGCHAIN_AVAILABLE:
+    try:
+        PROMPT = PromptTemplate(input_variables=["context", "query"], template=LC_PROMPT_TEMPLATE.replace("{fallback}", FALLBACK_SENTENCE))
+    except Exception as e:
+        print("Failed to construct LangChain PromptTemplate:", e)
 
 # ----------------------
 # LLM invoke via LangChain (preferred) or direct Bedrock (fallback)
 # ----------------------
 def run_langchain_llm(query: str, context_text: str):
+    if not LANGCHAIN_AVAILABLE or PROMPT is None:
+        return None
     try:
         lc_llm = LangchainBedrock(model_id="anthropic.claude-3-sonnet-20240229-v1:0", temperature=0.2)
         chain = LLMChain(llm=lc_llm, prompt=PROMPT)
