@@ -151,8 +151,7 @@ For a detailed progress report and history of changes, see `Progress_summary.txt
 ---
 
 ## Architecture 
-
-![Your paragraph text (1)](https://github.com/user-attachments/assets/314604da-1eba-4703-a8c4-550be0c57910)
+![Your paragraph text (2)](https://github.com/user-attachments/assets/3089be2e-d4a8-49fd-ab39-c7f239fae680)
 
 ---
 
