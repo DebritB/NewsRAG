@@ -59,8 +59,8 @@ SUPPORTED = {
 
 UNSUPPORTED_HINTS = [
     "politic", "gov", "election", "technology", "tech",
-    "science", "space", "war", "military", "crypto",
-    "climate", "environment", "weather"
+    "science", "space", "war", "military", "conflict", 
+    "climate", "environment", "weather","crime", 
 ]
 
 GENERIC_WORDS = {"give", "tell", "say", "news", "update", "anything", "something"}
@@ -245,9 +245,10 @@ You are a precise news assistant.
 
 {edge_cases}
 
-General Rules:
+General Rules: 
 - Interpret user intent clearly.
-- Keep responses short (2–3 sentences).
+- Understand the question properly, analyse it with chain-of-thoughts and then give answers. 
+- Keep responses short (2–3 sentences) without any BULLET.
 - Never hallucinate or add outside information.
 - DO NOT include URLs.
 - Use ONLY the provided article context.
@@ -263,6 +264,7 @@ General Rules:
   The provided articles cover ... "
   DO NOT add the last sentence, e.g. "The provided articles cover ... ", but keep the bullets. 
 User Question: {query}
+
 
 Article Context:
 {context_block}
