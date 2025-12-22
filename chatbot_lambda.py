@@ -109,6 +109,13 @@ def lambda_handler(event, context):
 
         categories = detect_categories(query)
 
+        # allow callers to request per-category breakdowns
+        per_category = bool(body.get("per_category", False))
+        try:
+            per_category_count = int(body.get("per_category_count", 3))
+        except Exception:
+            per_category_count = 3
+
         # unsupported category
         if categories == ["other"]:
             return _response(200, {
@@ -200,16 +207,83 @@ def search_articles(collection, embedding, max_results=5, min_score=0.0):
 # ---------------------------------------------------------------------------
 # LLM RESPONSE
 # ---------------------------------------------------------------------------
-def generate_response(query, articles, categories):
-    context_parts = []
+def generate_response(query, articles, categories, per_category=False, per_category_count=3):
+    """Generate an LLM response. If per_category=True, returns labeled sections per category.
 
-    for a in articles:
-        context_parts.append(
+    - per_category: bool -> whether to return separate labeled sections per category
+    - per_category_count: int -> max number of items per category
+    """
+
+    def article_text(a):
+        return (
             f"Title: {a.get('title','N/A')}\n"
             f"Source: {a.get('source','N/A')}\n"
             f"Published: {a.get('published_at','N/A')}\n"
             f"Summary: {a.get('summary') or (a.get('content') or '')[:300]}\n"
         )
+
+    # If per-category output was requested, group articles and craft per-category contexts
+    if per_category:
+        # Determine which categories to include:
+        if categories:
+            include_cats = set(categories)
+        else:
+            include_cats = {a.get('category', 'Uncategorized') or 'Uncategorized' for a in articles}
+
+        categorized = {}
+        for a in articles:
+            cat = a.get('category', 'Uncategorized') or 'Uncategorized'
+            if cat in include_cats:
+                categorized.setdefault(cat, []).append(a)
+
+        # Build a prompt that instructs the LLM to produce labeled sections
+        sections = []
+        for cat in sorted(categorized.keys()):
+            top = categorized[cat][:per_category_count]
+            parts = "\n\n".join(article_text(a) for a in top)
+            sections.append(f"Category: {cat}\n\n{parts}")
+
+        context_block = "\n\n---\n\n".join(sections)
+
+        prompt = f"""
+You are a precise news assistant. The user requested a per-category breakdown.
+
+Rules:
+- For each category provided, list up to {per_category_count} numbered items.
+- Each item: Title — one concise (1-sentence) summary derived ONLY from the provided article context.
+- Label each section with the category name (e.g., "Category: sports").
+- Keep responses concise and factual. Do NOT include URLs or information not present in the context.
+- If a category has no articles provided, write: "No articles for {cat}."
+
+User Question: {query}
+
+Article Context:
+{context_block}
+"""
+
+        resp = bedrock.invoke_model(
+            modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 900,
+                "temperature": 0.3,
+                "system": "Answer ONLY using article context.",
+                "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+            })
+        )
+
+        answer = json.loads(resp["body"].read())["content"][0]["text"].strip()
+
+        fallback = "The provided articles do not contain enough information to answer that."
+
+        if answer.strip().lower() == fallback.lower():
+            return fallback
+        if (not ALLOW_SOFT_FALLBACK) and (fallback.lower() in answer.lower()):
+            return fallback
+        return answer
+
+    # Default (non-per-category) behaviour
+    context_parts = [article_text(a) for a in articles]
 
     context_block = "\n\n".join(context_parts)
 
