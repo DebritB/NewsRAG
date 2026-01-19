@@ -27,18 +27,21 @@ def generate_embeddings_for_pending():
     db = client[MONGODB_DATABASE]
     collection = db[MONGODB_COLLECTION]
     
-    # Find articles that need embedding
-    pending_articles = list(collection.find(
+    # Find a limited set of articles that need embedding
+    batch_size = int(os.environ.get('EMBEDDING_BATCH_SIZE', '25'))
+    pending_cursor = collection.find(
         {'embedding_status': 'pending'},
-        {'_id': 1, 'title': 1, 'summary': 1, 'content': 1}
-    ))
-    
+        {'_id': 1, 'title': 1, 'summary': 1, 'content': 1, 'embedding_attempts': 1}
+    ).limit(batch_size)
+
+    pending_articles = list(pending_cursor)
+
     if not pending_articles:
         print("✅ No articles are pending embedding. Exiting.")
         client.close()
         return {"articles_processed": 0}
 
-    print(f"Found {len(pending_articles)} articles pending embedding. Starting generation...")
+    print(f"Found {len(pending_articles)} articles pending embedding (batch_size={batch_size}). Starting generation...")
     
     embeddings_generator = BedrockEmbeddings(region_name='us-east-1')
     processed_count = 0
@@ -75,12 +78,27 @@ def generate_embeddings_for_pending():
                 print(f"  - Processed {processed_count}/{len(pending_articles)} articles...")
 
         except Exception as e:
-            print(f"❌ Error generating embedding for article {article['_id']}: {e}")
-            # Mark the article as failed so we don't retry it indefinitely
+            err_text = str(e)
+            print(f"❌ Error generating embedding for article {article['_id']}: {err_text}")
+
+            # Increment attempt counter and leave as 'pending' for retry later
             collection.update_one(
                 {'_id': article['_id']},
-                {'$set': {'embedding_status': 'failed', 'embedding_error': str(e)}}
+                {'$inc': {'embedding_attempts': 1},
+                 '$set': {'last_embedding_error': err_text, 'last_embedding_attempted_at': __import__('datetime').datetime.utcnow()}}
             )
+
+            # If we detect throttling, back off and exit early after a few occurrences to avoid timeout
+            if 'throttle' in err_text.lower() or 'throttling' in err_text.lower():
+                consecutive_throttle_count += 1
+                print(f"⚠️ Bedrock throttling detected ({consecutive_throttle_count}).")
+                if consecutive_throttle_count >= 3:
+                    print("⚠️ Multiple throttling events detected. Exiting early to allow system to recover.")
+                    break
+            else:
+                # Non-throttling error; continue to next article
+                pass
+
             continue # Continue to the next article
 
     client.close()
@@ -93,7 +111,7 @@ def lambda_handler(event, context):
     """Lambda handler for the embedding generator."""
     print("--- Embedding Generator Lambda ---")
     try:
-        result = generate_embeddings_for_pending()
+        result = generate_embeddings_for_pending(context=context)
         return {
             'statusCode': 200,
             'body': result

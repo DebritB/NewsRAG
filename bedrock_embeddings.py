@@ -32,8 +32,9 @@ class BedrockEmbeddings:
             List of floats representing the embedding vector (1024 dimensions)
         """
         import time
-        max_retries = 5
-        base_delay = 2
+        # Reduce retries to fail fast on repeated throttling to allow higher-level handler to bail out
+        max_retries = 3
+        base_delay = 1
         
         for attempt in range(max_retries):
             try:
@@ -55,8 +56,8 @@ class BedrockEmbeddings:
                 return embedding
                 
             except Exception as e:
+                # Detect throttling and retry a small number of times with short base delay
                 if 'ThrottlingException' in str(e) and attempt < max_retries - 1:
-                    # Exponential backoff
                     delay = base_delay * (2 ** attempt)
                     logger.warning(f"Throttled, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(delay)
