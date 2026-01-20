@@ -54,7 +54,6 @@ Resources:
       CodeUri: lambda_package/
       Handler: embedding_lambda.lambda_handler
       Description: Generates and saves vector embeddings for news articles.
-      ReservedConcurrentExecutions: 2
       Policies:
         - Statement:
             - Effect: Allow
