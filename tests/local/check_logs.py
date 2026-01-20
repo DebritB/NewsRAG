@@ -68,14 +68,29 @@ def get_latest_logs(log_group_name):
         print(f"❌ An error occurred: {e}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in LOG_GROUPS:
-        print("Usage: python check_logs.py [1|2|3|4]")
+    if len(sys.argv) != 2:
+        print("Usage: python check_logs.py [1|2|3|4]  OR  python check_logs.py <lambda_function_name_or_log_group>")
         print("  1: Scraper")
         print("  2: Embedding Generator")
         print("  3: Index Manager")
         print("  4: Deduplicator")
+        print("Examples:")
+        print("  python check_logs.py 2")
+        print("  python check_logs.py NewsRAG-Embedding")
+        print("  python check_logs.py /aws/lambda/NewsRAG-Embedding")
         sys.exit(1)
-        
-    choice = sys.argv[1]
-    selected_log_group = LOG_GROUPS[choice]
+
+    arg = sys.argv[1]
+
+    # If the arg matches one of the numeric shortcuts, use it
+    if arg in LOG_GROUPS:
+        selected_log_group = LOG_GROUPS[arg]
+    else:
+        # Accept either a full log group name or a Lambda function name
+        if arg.startswith("/aws/lambda/") or arg.startswith("/aws/logs/"):
+            selected_log_group = arg
+        else:
+            # Assume the user passed the Lambda function name
+            selected_log_group = f"/aws/lambda/{arg}"
+
     get_latest_logs(selected_log_group)
