@@ -161,23 +161,6 @@ Resources:
   # for CloudWatch Logs. The policies attached above grant the specific permissions needed.
   # An explicit role for the State Machine is also created by SAM.
 
-  EmbeddingFunctionThrottleAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub "${AWS::StackName}-EmbeddingFunction-Throttles"
-      Namespace: "AWS/Lambda"
-      MetricName: "Throttles"
-      Dimensions:
-        - Name: FunctionName
-          Value: !Ref EmbeddingFunction
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: missing
-      AlarmDescription: "Alarm when the Embedding Lambda produces throttles (investigate concurrency or Bedrock quotas)."
-
 Outputs:
   StateMachineArn:
     Description: "ARN of the Step Functions State Machine"
