@@ -14,7 +14,8 @@ import sys
 # --- Configuration ---
 LOG_GROUPS = {
     '1': '/aws/lambda/NewsRAG-Scraper',
-    '2': '/aws/lambda/NewsRAG-EmbeddingGenerator',
+    # Correct log group for the Embedding Lambda (was 'NewsRAG-EmbeddingGenerator')
+    '2': '/aws/lambda/NewsRAG-Embedding',
     '3': '/aws/lambda/NewsRAG-IndexManager',
     '4': '/aws/lambda/NewsRAG-Deduplicator'
 }

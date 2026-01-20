@@ -11,6 +11,7 @@ Production-ready version with:
 import json
 import os
 import boto3
+from botocore.exceptions import ClientError
 from pymongo import MongoClient
 
 
@@ -94,6 +95,7 @@ def detect_categories(query: str):
 # LAMBDA HANDLER
 # ---------------------------------------------------------------------------
 def lambda_handler(event, context):
+    query = ""
     try:
         body = json.loads(event.get("body", "{}"))
         query = body.get("query", "").strip()
@@ -149,6 +151,19 @@ def lambda_handler(event, context):
             "articles_used": len(articles)
         })
 
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', '')
+        error_msg = str(e)
+        is_throttle = 'Throttling' in error_code or 'TooManyRequests' in error_msg
+        print(f"ERROR: {error_code} - {error_msg}")
+        if is_throttle:
+            return _response(200, {
+                "query": query,
+                "response": "The AI service is temporarily busy due to high demand. Please try again in a few minutes.",
+                "articles_used": 0,
+                "throttled": True
+            })
+        return _response(500, {"error": "Internal server error"})
     except Exception as e:
         print("ERROR:", e)
         return _response(500, {"error": "Internal server error"})
