@@ -1,0 +1,10 @@
+[
+  {
+    "question": "What did the Reserve Bank decide about interest rates?",
+    "expected_ids": ["<article id from articles.json>"]
+  },
+  {
+    "question": "Which team won the grand final?",
+    "expected_ids": ["<article id>", "<another article id that also answers it>"]
+  }
+]
