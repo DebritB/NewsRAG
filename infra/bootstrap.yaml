@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  One-time bootstrap for NewsRAG - GitHub OIDC provider, deploy role for
+  GitHub Actions, and the S3 bucket for CloudFormation deploy artifacts.
+  Deploy this once by hand; the GitHub workflow then uses what it creates.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: DebritB/NewsRAG
+    Description: GitHub repository (owner/name) allowed to assume the deploy role.
+  Branch:
+    Type: String
+    Default: main
+    Description: Branch allowed to assume the deploy role.
+
+Resources:
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: github-newsrag-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubRepo}:ref:refs/heads/${Branch}'
+      ManagedPolicyArns:
+        # Broad for the first deploys; narrow once the pipeline works.
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+
+Outputs:
+  DeployRoleArn:
+    Description: Put this in the GitHub Actions variable AWS_ROLE_ARN.
+    Value: !GetAtt DeployRole.Arn
+  ArtifactBucketName:
+    Description: Put this in the GitHub Actions secret S3_BUCKET_NAME.
+    Value: !Ref ArtifactBucket
