@@ -40,7 +40,7 @@ def generate_embeddings_for_pending():
 
     print(f"Found {len(pending_articles)} articles pending embedding. Starting generation...")
     
-    embeddings_generator = BedrockEmbeddings(region_name='us-east-1')
+    embeddings_generator = BedrockEmbeddings()
     processed_count = 0
     
     for i, article in enumerate(pending_articles):

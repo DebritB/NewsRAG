@@ -14,8 +14,17 @@ Globals:
         MONGODB_URI: !Ref MongoDBConnectionString
         MONGODB_DATABASE: news_rag
         MONGODB_COLLECTION: articles
+        CLAUDE_MODEL_ID: !Ref ClaudeModelId
 
 Parameters:
+  ClaudeModelId:
+    Type: String
+    Default: au.anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: Bedrock inference profile ID for Claude (classification and chatbot answers).
+  ClaudeFoundationModel:
+    Type: String
+    Default: anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: Foundation model ID behind ClaudeModelId (used for IAM).
   MongoDBConnectionString:
     Type: String
     Description: MongoDB Atlas connection string with read/write access to the news_rag database.
@@ -44,7 +53,9 @@ Resources:
               Action: ['bedrock:InvokeModel']
               Resource:
                 - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
-                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0'
+                # Claude via inference profile: allow the profile and the model in every region it routes to
+                - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ClaudeModelId}'
+                - !Sub 'arn:aws:bedrock:*::foundation-model/${ClaudeFoundationModel}'
 
   # 2. Embedding Function: Generates embeddings for articles that don't have them.
   EmbeddingFunction:
@@ -79,7 +90,7 @@ Resources:
       Handler: deduplicator_lambda.lambda_handler
       Description: Finds and consolidates duplicate articles in MongoDB using vector similarity.
 
-  # 5. Chatbot Function: Handles AI-powered Q&A using vector search and Claude 3 Sonnet.
+  # 5. Chatbot Function: Handles AI-powered Q&A using vector search and Claude.
   ChatbotFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -87,13 +98,27 @@ Resources:
       CodeUri: lambda_package/
       Handler: chatbot_lambda.lambda_handler
       Description: Processes user queries, performs vector search on MongoDB, and generates AI responses using Bedrock.
+      # Public HTTPS URL that the Streamlit dashboard calls (AWS_API_URL)
+      FunctionUrlConfig:
+        AuthType: NONE
       Policies:
         - Statement:
             - Effect: Allow
               Action: ['bedrock:InvokeModel']
               Resource:
                 - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
-                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0'
+                - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ClaudeModelId}'
+                - !Sub 'arn:aws:bedrock:*::foundation-model/${ClaudeFoundationModel}'
+
+  # Public function URLs also need lambda:InvokeFunction (scoped to calls made through the URL).
+  # SAM adds lambda:InvokeFunctionUrl itself.
+  ChatbotUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ChatbotFunction
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
 
   # =====================================================================================
   # == Step Functions State Machine for Orchestration
@@ -180,3 +205,6 @@ Outputs:
   ChatbotFunction:
     Description: "Name of the Chatbot Lambda function"
     Value: !Ref ChatbotFunction
+  ChatbotUrl:
+    Description: "Public URL of the chatbot - set this as AWS_API_URL in Streamlit secrets"
+    Value: !GetAtt ChatbotFunctionUrl.FunctionUrl

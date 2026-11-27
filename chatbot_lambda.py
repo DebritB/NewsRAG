@@ -23,7 +23,11 @@ MONGODB_COLLECTION = os.environ.get("MONGODB_COLLECTION", "articles")
 MIN_VECTOR_SEARCH_SCORE = float(os.environ.get("MIN_VECTOR_SEARCH_SCORE", "0.0"))
 ALLOW_SOFT_FALLBACK = os.environ.get("ALLOW_SOFT_FALLBACK", "true").lower() in ("1", "true", "yes")
 
-bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
+AWS_REGION = os.environ.get("AWS_REGION", "ap-southeast-2")
+# Inference profile ID (Haiku 4.5 can't be called on-demand by plain model ID in Sydney)
+CLAUDE_MODEL_ID = os.environ.get("CLAUDE_MODEL_ID", "au.anthropic.claude-haiku-4-5-20251001-v1:0")
+
+bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +266,7 @@ Article Context:
 """
 
         resp = bedrock.invoke_model(
-            modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+            modelId=CLAUDE_MODEL_ID,
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 900,
@@ -345,7 +349,7 @@ Article Context:
 """
 
     resp = bedrock.invoke_model(
-        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        modelId=CLAUDE_MODEL_ID,
         body=json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 900,

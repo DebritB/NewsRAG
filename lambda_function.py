@@ -30,7 +30,7 @@ CONFIDENCE_THRESHOLD = 0.15  # Articles below this need Claude classification
 def get_secrets():
     """Retrieve API keys from AWS Secrets Manager"""
     secret_name = "newsrag/api-keys"
-    region_name = "us-east-1"
+    region_name = os.environ.get("AWS_REGION", "ap-southeast-2")
     
     session = boto3.session.Session()
     client = session.client(
@@ -101,7 +101,7 @@ def lambda_handler(event, context):
         # --- Classification Step ---
         print(f"Classifying {len(articles)} articles...")
         keyword_classifier = KeywordClassifier()
-        embeddings_generator = BedrockEmbeddings(region_name='us-east-1')
+        embeddings_generator = BedrockEmbeddings()
         
         high_confidence_articles = []
         low_confidence_articles = []

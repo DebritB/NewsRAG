@@ -2,6 +2,7 @@
 import boto3
 import json
 import logging
+import os
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -9,16 +10,18 @@ logger = logging.getLogger(__name__)
 class BedrockEmbeddings:
     """Generate embeddings using Amazon Bedrock Titan Embed Text v2"""
     
-    def __init__(self, region_name: str = 'us-east-1'):
+    def __init__(self, region_name: Optional[str] = None):
         """
         Initialize Bedrock client
-        
+
         Args:
-            region_name: AWS region for Bedrock (default: us-east-1)
+            region_name: AWS region for Bedrock (default: the Lambda's own region, AWS_REGION)
         """
+        region_name = region_name or os.environ.get('AWS_REGION', 'ap-southeast-2')
         self.client = boto3.client('bedrock-runtime', region_name=region_name)
         self.model_id = 'amazon.titan-embed-text-v2:0'
-        self.claude_model_id = 'anthropic.claude-3-haiku-20240307-v1:0'
+        # Inference profile ID (Haiku 4.5 can't be called on-demand by plain model ID in Sydney)
+        self.claude_model_id = os.environ.get('CLAUDE_MODEL_ID', 'au.anthropic.claude-haiku-4-5-20251001-v1:0')
         self.dimensions = 1024  # Titan v2 produces 1024-dimensional vectors
         
     def generate_embedding(self, text: str) -> List[float]:
