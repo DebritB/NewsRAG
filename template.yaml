@@ -43,19 +43,7 @@ Resources:
       CodeUri: lambda_package/
       Handler: lambda_function.lambda_handler
       Description: Scrapes, classifies, and embeds news articles, then saves them to MongoDB.
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action: ['secretsmanager:GetSecretValue']
-              Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:newsrag/api-keys-*'
-        - Statement:
-            - Effect: Allow
-              Action: ['bedrock:InvokeModel']
-              Resource:
-                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
-                # Claude via inference profile: allow the profile and the model in every region it routes to
-                - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ClaudeModelId}'
-                - !Sub 'arn:aws:bedrock:*::foundation-model/${ClaudeFoundationModel}'
+      Role: !GetAtt NewsRAGLambdaRole.Arn
 
   # 2. Embedding Function: Generates embeddings for articles that don't have them.
   EmbeddingFunction:
@@ -65,12 +53,7 @@ Resources:
       CodeUri: lambda_package/
       Handler: embedding_lambda.lambda_handler
       Description: Generates and saves vector embeddings for news articles.
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action: ['bedrock:InvokeModel']
-              Resource:
-                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+      Role: !GetAtt NewsRAGLambdaRole.Arn
 
   # 3. Index Manager Function: Checks for and creates the MongoDB vector index.
   IndexManagerFunction:
@@ -80,7 +63,8 @@ Resources:
       CodeUri: lambda_package/
       Handler: index_manager_lambda.lambda_handler
       Description: Checks if the MongoDB vector search index exists and creates it if needed.
-  
+      Role: !GetAtt NewsRAGLambdaRole.Arn
+
   # 4. Deduplicator Function: Removes duplicate articles using vector search.
   DeduplicatorFunction:
     Type: AWS::Serverless::Function
@@ -89,6 +73,7 @@ Resources:
       CodeUri: lambda_package/
       Handler: deduplicator_lambda.lambda_handler
       Description: Finds and consolidates duplicate articles in MongoDB using vector similarity.
+      Role: !GetAtt NewsRAGLambdaRole.Arn
 
   # 5. Chatbot Function: Handles AI-powered Q&A using vector search and Claude.
   ChatbotFunction:
@@ -101,14 +86,7 @@ Resources:
       # Public HTTPS URL that the Streamlit dashboard calls (AWS_API_URL)
       FunctionUrlConfig:
         AuthType: NONE
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action: ['bedrock:InvokeModel']
-              Resource:
-                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
-                - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ClaudeModelId}'
-                - !Sub 'arn:aws:bedrock:*::foundation-model/${ClaudeFoundationModel}'
+      Role: !GetAtt NewsRAGLambdaRole.Arn
 
   # Public function URLs also need lambda:InvokeFunction (scoped to calls made through the URL).
   # SAM adds lambda:InvokeFunctionUrl itself.
@@ -173,18 +151,42 @@ Resources:
 
 
   # =====================================================================================
-  # == IAM Roles (implicit roles created by SAM are sufficient for basic Lambda execution)
+  # == Shared execution role for all 5 Lambdas
   # =====================================================================================
-  # SAM automatically creates execution roles for each Lambda function with permissions
-  # for CloudWatch Logs. The policies attached above grant the specific permissions needed.
-  # An explicit role for the State Machine is also created by SAM.
-
-  # =====================================================================================
-  # == IAM Roles (implicit roles created by SAM are sufficient for basic Lambda execution)
-  # =====================================================================================
-  # SAM automatically creates execution roles for each Lambda function with permissions
-  # for CloudWatch Logs. The policies attached above grant the specific permissions needed.
-  # An explicit role for the State Machine is also created by SAM.
+  # Fixed name => stable ARN (arn:aws:iam::<account>:role/NewsRAG-LambdaRole), e.g. for a
+  # MongoDB Atlas "AWS IAM" database user. Holds the combined permissions of all Lambdas.
+  NewsRAGLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: NewsRAG-LambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole   # CloudWatch Logs
+      Policies:
+        - PolicyName: NewsRAGBedrock
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+                  # Claude via inference profile: allow the profile and the model in every region it routes to
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ClaudeModelId}'
+                  - !Sub 'arn:aws:bedrock:*::foundation-model/${ClaudeFoundationModel}'
+        - PolicyName: NewsRAGSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:newsrag/api-keys-*'
 
 Outputs:
   StateMachineArn:
@@ -208,3 +210,6 @@ Outputs:
   ChatbotUrl:
     Description: "Public URL of the chatbot - set this as AWS_API_URL in Streamlit secrets"
     Value: !GetAtt ChatbotFunctionUrl.FunctionUrl
+  LambdaRoleArn:
+    Description: "Shared execution role of all 5 Lambdas (use for a MongoDB Atlas AWS IAM user)"
+    Value: !GetAtt NewsRAGLambdaRole.Arn
