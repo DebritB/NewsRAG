@@ -6,8 +6,9 @@ lxml
 html5lib
 python-dateutil
 pytz
-pymongo>=4.0.0
-dnspython
+- pymongo>=4.0.0
++ pymongo[aws]>=4.0.0
+dnspythons
 boto3
 langchain
 langchain-aws
