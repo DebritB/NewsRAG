@@ -58,3 +58,4 @@ tests/extract/rss_output*.json
 # Ignore all markdown files except README
 COST_ANALYSIS.md
 VERIFIED_SOURCES.md
+strategy.md
