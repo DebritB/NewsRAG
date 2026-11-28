@@ -24,8 +24,8 @@ MIN_VECTOR_SEARCH_SCORE = float(os.environ.get("MIN_VECTOR_SEARCH_SCORE", "0.0")
 ALLOW_SOFT_FALLBACK = os.environ.get("ALLOW_SOFT_FALLBACK", "true").lower() in ("1", "true", "yes")
 
 AWS_REGION = os.environ.get("AWS_REGION", "ap-southeast-2")
-# Inference profile ID (Haiku 4.5 can't be called on-demand by plain model ID in Sydney)
-CLAUDE_MODEL_ID = os.environ.get("CLAUDE_MODEL_ID", "au.anthropic.claude-haiku-4-5-20251001-v1:0")
+# Chat model (any Bedrock model that supports the Converse API) - set via the LLMModelId template parameter
+LLM_MODEL_ID = os.environ.get("LLM_MODEL_ID", "zai.glm-5")
 
 bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
@@ -171,6 +171,21 @@ def generate_embedding(text):
 
 
 # ---------------------------------------------------------------------------
+# LLM CALL (Converse API - same request shape for every Bedrock chat model)
+# ---------------------------------------------------------------------------
+def ask_llm(prompt, system="Answer ONLY using article context.", max_tokens=900):
+    resp = bedrock.converse(
+        modelId=LLM_MODEL_ID,
+        system=[{"text": system}],
+        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        inferenceConfig={"maxTokens": max_tokens},
+    )
+    # Reasoning models may return a reasoning block first: take the first text block
+    blocks = resp["output"]["message"]["content"]
+    return next((b["text"] for b in blocks if "text" in b), "").strip()
+
+
+# ---------------------------------------------------------------------------
 # VECTOR SEARCH
 # ---------------------------------------------------------------------------
 def search_articles(collection, embedding, max_results=5, min_score=0.0):
@@ -265,18 +280,7 @@ Article Context:
 {context_block}
 """
 
-        resp = bedrock.invoke_model(
-            modelId=CLAUDE_MODEL_ID,
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 900,
-                "temperature": 0.3,
-                "system": "Answer ONLY using article context.",
-                "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
-            })
-        )
-
-        answer = json.loads(resp["body"].read())["content"][0]["text"].strip()
+        answer = ask_llm(prompt)
 
         fallback = "The provided articles do not contain enough information to answer that."
 
@@ -348,18 +352,7 @@ Article Context:
 {context_block}
 """
 
-    resp = bedrock.invoke_model(
-        modelId=CLAUDE_MODEL_ID,
-        body=json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 900,
-            "temperature": 0.3,
-            "system": "Answer ONLY using article context.",
-            "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
-        })
-    )
-
-    answer = json.loads(resp["body"].read())["content"][0]["text"].strip()
+    answer = ask_llm(prompt)
 
     fallback = "The provided articles do not contain enough information to answer that."
 

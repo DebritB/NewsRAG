@@ -14,17 +14,15 @@ Globals:
         MONGODB_URI: !Ref MongoDBConnectionString
         MONGODB_DATABASE: news_rag
         MONGODB_COLLECTION: articles
-        CLAUDE_MODEL_ID: !Ref ClaudeModelId
+        LLM_MODEL_ID: !Ref LLMModelId
 
 Parameters:
-  ClaudeModelId:
+  LLMModelId:
     Type: String
-    Default: au.anthropic.claude-haiku-4-5-20251001-v1:0
-    Description: Bedrock inference profile ID for Claude (classification and chatbot answers).
-  ClaudeFoundationModel:
-    Type: String
-    Default: anthropic.claude-haiku-4-5-20251001-v1:0
-    Description: Foundation model ID behind ClaudeModelId (used for IAM).
+    Default: zai.glm-5
+    Description: >
+      On-demand Bedrock model ID for classification and chatbot answers (called via the Converse API).
+      Alternatives tested on the Free plan: qwen.qwen3-235b-a22b-2507-v1:0, nvidia.nemotron-super-3-120b.
   MongoDBConnectionString:
     Type: String
     Description: MongoDB Atlas connection string with read/write access to the news_rag database.
@@ -177,9 +175,8 @@ Resources:
                 Action: bedrock:InvokeModel
                 Resource:
                   - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
-                  # Claude via inference profile: allow the profile and the model in every region it routes to
-                  - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ClaudeModelId}'
-                  - !Sub 'arn:aws:bedrock:*::foundation-model/${ClaudeFoundationModel}'
+                  # Chat/classification model (on-demand, called in this region)
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/${LLMModelId}'
         - PolicyName: NewsRAGSecrets
           PolicyDocument:
             Version: '2012-10-17'

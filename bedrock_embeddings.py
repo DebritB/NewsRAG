@@ -1,8 +1,9 @@
-"""Amazon Bedrock embedding generation using Titan v2 and Claude for classification"""
+"""Amazon Bedrock embedding generation using Titan v2, and an LLM (Converse API) for classification"""
 import boto3
 import json
 import logging
 import os
+import re
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,8 @@ class BedrockEmbeddings:
         region_name = region_name or os.environ.get('AWS_REGION', 'ap-southeast-2')
         self.client = boto3.client('bedrock-runtime', region_name=region_name)
         self.model_id = 'amazon.titan-embed-text-v2:0'
-        # Inference profile ID (Haiku 4.5 can't be called on-demand by plain model ID in Sydney)
-        self.claude_model_id = os.environ.get('CLAUDE_MODEL_ID', 'au.anthropic.claude-haiku-4-5-20251001-v1:0')
+        # Chat model for classification (any Bedrock model that supports the Converse API)
+        self.llm_model_id = os.environ.get('LLM_MODEL_ID', 'zai.glm-5')
         self.dimensions = 1024  # Titan v2 produces 1024-dimensional vectors
         
     def generate_embedding(self, text: str) -> List[float]:
@@ -69,8 +70,8 @@ class BedrockEmbeddings:
     
     def classify_category(self, title: str, content: str) -> Optional[str]:
         """
-        Use Bedrock Claude to classify article into one of 4 categories
-        
+        Use the Bedrock LLM (Converse API) to classify article into one of 4 categories
+
         Args:
             title: Article title
             content: Article content (first 1000 chars)
@@ -85,62 +86,49 @@ class BedrockEmbeddings:
         # Truncate content for efficiency
         content_preview = content[:1000] if content else ""
         
-        prompt = f"""Classify this news article into ONE of these categories: sports, lifestyle, music, or finance.
-
-Title: {title}
-Content: {content_preview}
-
-If the article clearly fits one of these categories, respond with ONLY the category name in lowercase (sports, lifestyle, music, or finance).
-If the article does NOT fit any of these categories, respond with ONLY the word: none
-
-Examples:
-- Sports article → sports
-- Health/travel/fashion article → lifestyle
-- Concert/album article → music
-- Stock/economy article → finance
-- Politics/crime/weather article → none
-
-Category:"""
+        system_prompt = (
+            "You are a news classifier. Reply with ONLY one lowercase word from this list: "
+            "sports, finance, music, lifestyle, none. No explanation, no punctuation.\n"
+            "Guide: sports article -> sports; health/travel/fashion -> lifestyle; "
+            "concert/album -> music; stocks/economy -> finance; politics/crime/weather/anything else -> none."
+        )
+        user_prompt = f"Title: {title}\nContent: {content_preview}\nCategory:"
 
         for attempt in range(max_retries):
             try:
-                response = self.client.invoke_model(
-                    modelId=self.claude_model_id,
-                    body=json.dumps({
-                        "anthropic_version": "bedrock-2023-05-31",
-                        "max_tokens": 10,
-                        "temperature": 0,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": prompt
-                            }
-                        ]
-                    })
+                response = self.client.converse(
+                    modelId=self.llm_model_id,
+                    system=[{"text": system_prompt}],
+                    messages=[{"role": "user", "content": [{"text": user_prompt}]}],
+                    # Room for models that reason before answering; non-reasoning models use ~2 tokens
+                    inferenceConfig={"maxTokens": 400},
                 )
-                
-                response_body = json.loads(response['body'].read())
-                category = response_body['content'][0]['text'].strip().lower()
-                
-                # Validate category
+
+                # Reasoning models may return a reasoning block first: take the first text block
+                blocks = response['output']['message']['content']
+                raw = next((b['text'] for b in blocks if 'text' in b), '')
+                # Normalise replies like "Sports." or "\n\nsports" to the first lowercase word
+                words = re.findall(r'[a-z]+', raw.lower())
+                category = words[0] if words else ''
+
                 valid_categories = ['sports', 'lifestyle', 'music', 'finance']
                 if category in valid_categories:
-                    logger.debug(f"Claude classified as: {category}")
+                    logger.debug(f"LLM classified as: {category}")
                     return category
                 elif category == 'none':
-                    logger.debug("Claude: no matching category")
+                    logger.debug("LLM: no matching category")
                     return None
                 else:
-                    logger.warning(f"Unexpected Claude response: {category}, treating as no match")
+                    logger.warning(f"Unexpected LLM response: {raw[:50]!r}, treating as no match")
                     return None
-                    
+
             except Exception as e:
                 if 'ThrottlingException' in str(e) and attempt < max_retries - 1:
                     delay = base_delay * (2 ** attempt)
-                    logger.warning(f"Claude throttled, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                    logger.warning(f"LLM throttled, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(delay)
                 else:
-                    logger.error(f"Error in Claude classification: {str(e)}")
+                    logger.error(f"Error in LLM classification: {str(e)}")
                     # On error, return None (don't store article)
                     return None
         

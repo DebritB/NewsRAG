@@ -59,3 +59,4 @@ tests/extract/rss_output*.json
 COST_ANALYSIS.md
 VERIFIED_SOURCES.md
 strategy.md
+Model_Cost_Analysis.md
